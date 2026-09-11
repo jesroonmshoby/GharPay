@@ -7,6 +7,7 @@ import landlordRoutes from './routes/landlord.routes';
 import tenantRoutes from './routes/tenant.routes';
 import mediatorRoutes from './routes/mediator.routes';
 import adminRoutes from './routes/admin.routes';
+import settlementRoutes from './routes/settlement.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app: Express = express();
@@ -26,6 +27,7 @@ app.use('/api/landlord', landlordRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/mediator', mediatorRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/settlements', settlementRoutes);
 
 app.use(errorHandler);
 
