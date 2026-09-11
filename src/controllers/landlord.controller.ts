@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { calculateDispute } from '../services/calculation.service';
 
 /**
  * Helper to format Prisma Decimal objects to clean string representations for JSON responses
@@ -798,3 +799,66 @@ export const getDisputeDetails = async (
     next(error);
   }
 };
+
+/**
+ * POST /api/landlord/disputes/:disputeId/calculate
+ * Triggers the deterministic GharPay calculation engine for a dispute
+ */
+export const calculateDisputeHandler = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const landlordId = req.user?.userId;
+    const disputeId = req.params.disputeId as string;
+
+    if (!landlordId) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+      });
+      return;
+    }
+
+    if (!disputeId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'disputeId URL parameter is required',
+        },
+      });
+      return;
+    }
+
+    const result = await calculateDispute(disputeId, landlordId);
+
+    res.json({
+      success: true,
+      calculation: {
+        caseNumber: result.caseNumber,
+        claimedDeduction: result.claimedDeduction,
+        calculatedDeduction: result.calculatedDeduction,
+        difference: result.difference,
+        claims: result.claims,
+      },
+    });
+  } catch (error: any) {
+    if (error.statusCode) {
+      res.status(error.statusCode).json({
+        success: false,
+        error: {
+          code: error.code || 'CALCULATION_ERROR',
+          message: error.message,
+        },
+      });
+      return;
+    }
+    next(error);
+  }
+};
+
