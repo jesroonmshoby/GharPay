@@ -176,12 +176,36 @@ export const getTenantDisputes = async (tenantId: string) => {
 };
 
 /**
+ * Helper to check if an outside agreement proposal is currently pending mutual consent
+ */
+export const getPendingOutsideAgreement = async (disputeId: string) => {
+  const latestLog = await prisma.auditLog.findFirst({
+    where: {
+      disputeId,
+      action: { in: [AuditAction.LANDLORD_CONSENTED, AuditAction.TENANT_CONSENTED, AuditAction.CASE_SETTLED] },
+    },
+    orderBy: { timestamp: 'desc' },
+  });
+
+  if (!latestLog || !latestLog.metadata) return null;
+  const meta = latestLog.metadata as any;
+  if (meta && meta.type === 'OUTSIDE_AGREEMENT_PROPOSED') {
+    return {
+      proposedBy: meta.proposedBy as string,
+      proposedByRole: meta.proposedByRole as string,
+      timestamp: meta.timestamp || latestLog.timestamp.toISOString(),
+    };
+  }
+  return null;
+};
+
+/**
  * Fetches detailed dispute case for a tenant owner
  */
 export const getTenantDisputeDetails = async (
   disputeId: string,
   tenantId: string
-): Promise<FormattedDispute> => {
+): Promise<FormattedDispute & { outsideAgreement: any }> => {
   const dispute = await prisma.dispute.findUnique({
     where: { id: disputeId },
     include: {
@@ -223,6 +247,8 @@ export const getTenantDisputeDetails = async (
     throw err;
   }
 
+  const outsideAgreement = await getPendingOutsideAgreement(disputeId);
+
   return {
     id: dispute.id,
     caseNumber: dispute.caseNumber,
@@ -234,6 +260,7 @@ export const getTenantDisputeDetails = async (
     settlementEligible: dispute.settlementEligible,
     tenantOffer: formatDecimal(dispute.tenantOffer),
     landlordOffer: formatDecimal(dispute.landlordOffer),
+    outsideAgreement,
     property: dispute.tenancy.property,
     tenancy: {
       id: dispute.tenancy.id,

@@ -3,9 +3,10 @@ import {
   DisputeStatus,
   AuditAction,
   UserRole,
+  PaymentStatus,
 } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { generateSettlementPdf } from './settlement-pdf.service';
+import { generateSettlementPdf, formatDigitalTimestamp } from './settlement-pdf.service';
 
 /**
  * Helper to format Prisma Decimal objects to string or null
@@ -25,6 +26,10 @@ export interface SettlementSummary {
   consentLandlord: boolean;
   tenantConsentedAt: string | null;
   landlordConsentedAt: string | null;
+  paymentStatus: PaymentStatus;
+  paidAt: string | null;
+  paidBy: string | null;
+  paidByLandlordName: string | null;
   pdfUrl: string | null;
   settlementHash: string | null;
   disputeStatus: DisputeStatus;
@@ -138,6 +143,7 @@ export const createSettlement = async (
       }
     }
 
+    // Server-side refund calculation: refundAmount = totalDeposit - agreedDeduction
     const refundAmount = dispute.totalDeposit.sub(agreedDeduction);
 
     const settlement = await tx.settlement.create({
@@ -149,6 +155,9 @@ export const createSettlement = async (
         consentLandlord: false,
         tenantConsentedAt: null,
         landlordConsentedAt: null,
+        paymentStatus: PaymentStatus.PENDING,
+        paidAt: null,
+        paidBy: null,
         pdfUrl: null,
         settlementHash: null,
       },
@@ -177,6 +186,10 @@ export const createSettlement = async (
       consentLandlord: settlement.consentLandlord,
       tenantConsentedAt: null,
       landlordConsentedAt: null,
+      paymentStatus: settlement.paymentStatus,
+      paidAt: null,
+      paidBy: null,
+      paidByLandlordName: null,
       pdfUrl: settlement.pdfUrl,
       settlementHash: settlement.settlementHash,
       disputeStatus: dispute.status,
@@ -196,7 +209,11 @@ export const getSettlement = async (
   const dispute = await prisma.dispute.findUnique({
     where: { id: disputeId },
     include: {
-      tenancy: true,
+      tenancy: {
+        include: {
+          landlord: { select: { name: true } },
+        },
+      },
       settlement: true,
     },
   });
@@ -232,6 +249,10 @@ export const getSettlement = async (
     consentLandlord: s.consentLandlord,
     tenantConsentedAt: s.tenantConsentedAt ? s.tenantConsentedAt.toISOString() : null,
     landlordConsentedAt: s.landlordConsentedAt ? s.landlordConsentedAt.toISOString() : null,
+    paymentStatus: s.paymentStatus,
+    paidAt: s.paidAt ? s.paidAt.toISOString() : null,
+    paidBy: s.paidBy,
+    paidByLandlordName: dispute.tenancy.landlord.name,
     pdfUrl: s.pdfUrl,
     settlementHash: s.settlementHash,
     disputeStatus: dispute.status,
@@ -368,21 +389,90 @@ export const recordLandlordConsent = async (
 };
 
 /**
- * Checks if both party consents are present, marks dispute SETTLED, and generates PDF
+ * Landlord action to mark refund as paid outside GharPay
  */
-export const checkAndCompleteSettlement = async (disputeId: string) => {
+export const markPaymentAsPaid = async (
+  disputeId: string,
+  landlordUserId: string
+) => {
+  const dispute = await prisma.dispute.findUnique({
+    where: { id: disputeId },
+    include: {
+      tenancy: true,
+      settlement: true,
+    },
+  });
+
+  if (!dispute || !dispute.settlement) {
+    const err = new Error('Settlement not found');
+    (err as any).statusCode = 404;
+    (err as any).code = 'NOT_FOUND';
+    throw err;
+  }
+
+  if (dispute.tenancy.landlordId !== landlordUserId) {
+    const err = new Error('Only the landlord can mark the refund as paid');
+    (err as any).statusCode = 403;
+    (err as any).code = 'FORBIDDEN';
+    throw err;
+  }
+
+  if (!dispute.settlement.consentTenant || !dispute.settlement.consentLandlord) {
+    const err = new Error('Payment can only be marked as paid after both parties have consented to settlement');
+    (err as any).statusCode = 400;
+    (err as any).code = 'MUTUAL_CONSENT_REQUIRED';
+    throw err;
+  }
+
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.settlement.update({
+      where: { id: dispute.settlement!.id },
+      data: {
+        paymentStatus: PaymentStatus.MARKED_PAID,
+        paidAt: now,
+        paidBy: landlordUserId,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        disputeId: dispute.id,
+        userId: landlordUserId,
+        action: AuditAction.PAYMENT_MARKED_PAID,
+        metadata: {
+          caseNumber: dispute.caseNumber,
+          refundAmount: dispute.settlement!.refundAmount.toFixed(2),
+          paidAt: now.toISOString(),
+          paidBy: landlordUserId,
+        },
+      },
+    });
+  });
+
+  // Regenerate PDF with updated payment details
+  await checkAndCompleteSettlement(disputeId, true);
+
+  return await getSettlement(disputeId, landlordUserId, UserRole.LANDLORD);
+};
+
+/**
+ * Checks if both party consents are present, marks dispute SETTLED, and generates/updates PDF
+ */
+export const checkAndCompleteSettlement = async (disputeId: string, forceRegeneratePdf: boolean = false) => {
   const dispute = await prisma.dispute.findUnique({
     where: { id: disputeId },
     include: {
       tenancy: {
         include: {
           property: true,
-          landlord: { select: { name: true } },
-          tenant: { select: { name: true } },
+          landlord: { select: { name: true, email: true } },
+          tenant: { select: { name: true, email: true } },
         },
       },
-      mediator: { select: { name: true } },
-      offers: { orderBy: { roundNumber: 'asc' } },
+      mediator: { select: { name: true, email: true } },
+      claims: true,
       settlement: true,
     },
   });
@@ -416,44 +506,60 @@ export const checkAndCompleteSettlement = async (disputeId: string) => {
       });
     }
 
-    // 2. Generate PDF and SHA-256 hash if not already generated
-    if (!s.settlementHash || !s.pdfUrl) {
-      const roundsMap = new Map<number, { landlordOffer: string | null; tenantOffer: string | null }>();
+    // 2. Generate PDF and SHA-256 hash if not generated or forced
+    if (forceRegeneratePdf || !s.settlementHash || !s.pdfUrl) {
+      let totalClaimedDec = new Prisma.Decimal(0);
+      let totalApprovedDec = new Prisma.Decimal(0);
 
-      dispute.offers.forEach((o) => {
-        if (!roundsMap.has(o.roundNumber)) {
-          roundsMap.set(o.roundNumber, { landlordOffer: null, tenantOffer: null });
-        }
-        const item = roundsMap.get(o.roundNumber)!;
-        if (o.createdBy === dispute.tenancy.landlordId) {
-          item.landlordOffer = o.amount.toFixed(2);
-        } else if (o.createdBy === dispute.tenancy.tenantId) {
-          item.tenantOffer = o.amount.toFixed(2);
-        }
+      const claimsPdf = dispute.claims.map((c) => {
+        totalClaimedDec = totalClaimedDec.add(c.claimedAmount);
+        const approved = c.approvedAmount ?? new Prisma.Decimal(0);
+        totalApprovedDec = totalApprovedDec.add(approved);
+
+        return {
+          category: c.category,
+          description: c.description,
+          claimedAmount: c.claimedAmount.toFixed(2),
+          approvedAmount: approved.toFixed(2),
+          explanation: c.calculationExplanation,
+        };
       });
 
-      const roundsSummary = Array.from(roundsMap.entries()).map(([roundNumber, val]) => ({
-        roundNumber,
-        landlordOffer: val.landlordOffer,
-        tenantOffer: val.tenantOffer,
-      }));
+      const prop = dispute.tenancy.property;
+      const propertyAddrLines = [
+        prop.addressLine1,
+        prop.addressLine2,
+        `${prop.city}, ${prop.state}`,
+        prop.postalCode,
+      ].filter(Boolean).join(', ');
 
       const pdfResult = await generateSettlementPdf({
         disputeId: dispute.id,
         caseNumber: dispute.caseNumber,
-        landlordName: dispute.tenancy.landlord.name,
+        createdAt: formatDigitalTimestamp(dispute.createdAt),
+        finalizedAt: formatDigitalTimestamp(s.tenantConsentedAt || s.createdAt),
         tenantName: dispute.tenancy.tenant.name,
-        propertyAddress: `${dispute.tenancy.property.addressLine1}, ${dispute.tenancy.property.city}, ${dispute.tenancy.property.state}`,
+        tenantEmail: dispute.tenancy.tenant.email,
+        landlordName: dispute.tenancy.landlord.name,
+        landlordEmail: dispute.tenancy.landlord.email,
+        mediatorName: dispute.mediator ? dispute.mediator.name : 'GharPay Mediator',
+        mediatorEmail: dispute.mediator ? dispute.mediator.email : null,
+        propertyAddress: propertyAddrLines,
         securityDeposit: dispute.tenancy.securityDeposit.toFixed(2),
+        claimedDeduction: dispute.claimedDeduction.toFixed(2),
         calculatedDeduction: dispute.calculatedDeduction
           ? dispute.calculatedDeduction.toFixed(2)
           : '0.00',
         agreedDeduction: s.agreedDeduction.toFixed(2),
         refundAmount: s.refundAmount.toFixed(2),
-        roundsSummary,
-        mediatorName: dispute.mediator ? dispute.mediator.name : 'GharPay Mediator',
-        tenantConsentedAt: s.tenantConsentedAt ? s.tenantConsentedAt.toISOString() : new Date().toISOString(),
-        landlordConsentedAt: s.landlordConsentedAt ? s.landlordConsentedAt.toISOString() : new Date().toISOString(),
+        claims: claimsPdf,
+        totalClaimed: totalClaimedDec.toFixed(2),
+        totalApproved: totalApprovedDec.toFixed(2),
+        tenantConsentedAt: s.tenantConsentedAt ? formatDigitalTimestamp(s.tenantConsentedAt) : 'Recorded',
+        landlordConsentedAt: s.landlordConsentedAt ? formatDigitalTimestamp(s.landlordConsentedAt) : 'Recorded',
+        paymentStatus: s.paymentStatus,
+        paidAt: s.paidAt ? formatDigitalTimestamp(s.paidAt) : null,
+        paidByLandlordName: dispute.tenancy.landlord.name,
       });
 
       const publicPdfUrl = `/api/settlements/${dispute.id}/pdf`;

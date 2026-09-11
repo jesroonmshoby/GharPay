@@ -45,6 +45,7 @@ enum ClaimStatus {
   INSUFFICIENT
   APPROVED
   REJECTED
+  NEEDS_CLARIFICATION
 }
 
 enum EvidenceType {
@@ -94,6 +95,8 @@ enum AuditAction {
   LANDLORD_CONSENTED
   PDF_GENERATED
   CASE_SETTLED
+  PAYMENT_MARKED_PAID
+  MEDIATOR_REVIEW_REQUESTED
 }
 
 model User {
@@ -183,6 +186,9 @@ model Claim {
   claimedAmount          Decimal       @db.Decimal(12, 2)
   approvedAmount         Decimal?      @db.Decimal(12, 2)
   status                 ClaimStatus   @default(PENDING)
+  mediatorReviewedBy     String?
+  mediatorReviewedAt     DateTime?
+  mediatorReviewNote     String?       @db.Text
   calculationExplanation String?       @db.Text
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
@@ -228,19 +234,27 @@ model Offer {
   @@index([roundNumber])
 }
 
+enum PaymentStatus {
+  PENDING
+  MARKED_PAID
+}
+
 model Settlement {
-  id                  String    @id @default(uuid())
-  disputeId           String    @unique
-  agreedDeduction     Decimal   @db.Decimal(12, 2)
-  refundAmount        Decimal   @db.Decimal(12, 2)
-  consentTenant       Boolean   @default(false)
-  consentLandlord     Boolean   @default(false)
+  id                  String        @id @default(uuid())
+  disputeId           String        @unique
+  agreedDeduction     Decimal       @db.Decimal(12, 2)
+  refundAmount        Decimal       @db.Decimal(12, 2)
+  consentTenant       Boolean       @default(false)
+  consentLandlord     Boolean       @default(false)
   tenantConsentedAt   DateTime?
   landlordConsentedAt DateTime?
+  paymentStatus       PaymentStatus @default(PENDING)
+  paidAt              DateTime?
+  paidBy              String?
   pdfUrl              String?
   settlementHash      String?
-  createdAt           DateTime  @default(now())
-  dispute             Dispute   @relation(fields: [disputeId], references: [id])
+  createdAt           DateTime      @default(now())
+  dispute             Dispute       @relation(fields: [disputeId], references: [id])
 }
 
 model AuditLog {

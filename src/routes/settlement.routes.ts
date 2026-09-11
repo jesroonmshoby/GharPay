@@ -4,6 +4,7 @@ import {
   getSettlementHandler,
   tenantConsentHandler,
   landlordConsentHandler,
+  markPaymentAsPaidHandler,
   downloadPdfHandler,
 } from '../controllers/settlement.controller';
 import { authenticateJwt } from '../middleware/auth';
@@ -17,6 +18,7 @@ router.post('/:disputeId', createSettlementHandler);
 router.get('/:disputeId', getSettlementHandler);
 router.post('/:disputeId/consent/tenant', tenantConsentHandler);
 router.post('/:disputeId/consent/landlord', landlordConsentHandler);
+router.post('/:disputeId/mark-paid', markPaymentAsPaidHandler);
 router.get('/:disputeId/pdf', downloadPdfHandler);
 
 export default router;
