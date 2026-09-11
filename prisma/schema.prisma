@@ -47,18 +47,61 @@ enum ClaimStatus {
   REJECTED
 }
 
+enum EvidenceType {
+  PHOTO
+  INVOICE
+  RECEIPT
+  AGREEMENT
+  METER_READING
+  MESSAGE
+  OTHER
+}
+
+enum VerificationStatus {
+  PENDING
+  SUPPORTED
+  PARTIAL
+  INSUFFICIENT
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COUNTERED
+}
+
+enum AuditAction {
+  CASE_CREATED
+  CASE_SUBMITTED
+  EVIDENCE_UPLOADED
+  CALCULATION_GENERATED
+  OFFER_CREATED
+  OFFER_ACCEPTED
+  ROUND_COMPLETED
+  MEDIATOR_ASSIGNED
+  SETTLEMENT_CREATED
+  TENANT_CONSENTED
+  LANDLORD_CONSENTED
+  PDF_GENERATED
+  CASE_SETTLED
+}
+
 model User {
-  id                String    @id @default(uuid())
+  id                String     @id @default(uuid())
   name              String
-  email             String    @unique
+  email             String     @unique
   phone             String?
   passwordHash      String?
   role              UserRole
-  landlordTenancies Tenancy[] @relation("LandlordTenancies")
-  tenantTenancies   Tenancy[] @relation("TenantTenancies")
+  landlordTenancies Tenancy[]  @relation("LandlordTenancies")
+  tenantTenancies   Tenancy[]  @relation("TenantTenancies")
   initiatedDisputes Dispute[]
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  uploadedEvidence  Evidence[]
+  offers            Offer[]
+  auditLogs         AuditLog[]
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 }
 
 model Property {
@@ -109,6 +152,9 @@ model Dispute {
   tenancy             Tenancy       @relation(fields: [tenancyId], references: [id])
   initiator           User          @relation(fields: [initiatedBy], references: [id])
   claims              Claim[]
+  offers              Offer[]
+  auditLogs           AuditLog[]
+  settlement          Settlement?
 
   @@index([tenancyId])
   @@index([initiatedBy])
@@ -127,8 +173,74 @@ model Claim {
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   dispute                Dispute       @relation(fields: [disputeId], references: [id])
+  evidence               Evidence[]
 
   @@index([disputeId])
   @@index([category])
   @@index([status])
+}
+
+model Evidence {
+  id                 String             @id @default(uuid())
+  claimId            String
+  uploadedBy         String
+  type               EvidenceType
+  fileUrl            String
+  description        String?
+  verificationStatus VerificationStatus @default(PENDING)
+  createdAt          DateTime           @default(now())
+  claim              Claim              @relation(fields: [claimId], references: [id])
+  uploader           User               @relation(fields: [uploadedBy], references: [id])
+
+  @@index([claimId])
+  @@index([uploadedBy])
+  @@index([verificationStatus])
+}
+
+model Offer {
+  id          String      @id @default(uuid())
+  disputeId   String
+  createdBy   String
+  amount      Decimal     @db.Decimal(12, 2)
+  roundNumber Int
+  message     String?
+  status      OfferStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+  dispute     Dispute     @relation(fields: [disputeId], references: [id])
+  creator     User        @relation(fields: [createdBy], references: [id])
+
+  @@index([disputeId])
+  @@index([createdBy])
+  @@index([roundNumber])
+}
+
+model Settlement {
+  id                  String    @id @default(uuid())
+  disputeId           String    @unique
+  agreedDeduction     Decimal   @db.Decimal(12, 2)
+  refundAmount        Decimal   @db.Decimal(12, 2)
+  consentTenant       Boolean   @default(false)
+  consentLandlord     Boolean   @default(false)
+  tenantConsentedAt   DateTime?
+  landlordConsentedAt DateTime?
+  pdfUrl              String?
+  settlementHash      String?
+  createdAt           DateTime  @default(now())
+  dispute             Dispute   @relation(fields: [disputeId], references: [id])
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  disputeId String
+  userId    String
+  action    AuditAction
+  metadata  Json?
+  timestamp DateTime    @default(now())
+  dispute   Dispute     @relation(fields: [disputeId], references: [id])
+  user      User        @relation(fields: [userId], references: [id])
+
+  @@index([disputeId])
+  @@index([userId])
+  @@index([action])
+  @@index([timestamp])
 }
