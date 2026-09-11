@@ -17,6 +17,36 @@ enum UserRole {
   ADMIN
 }
 
+enum DisputeStatus {
+  DRAFT
+  SUBMITTED
+  EVIDENCE_REVIEW
+  CALCULATED
+  TENANT_REVIEW
+  NEGOTIATION
+  MEDIATOR_REVIEW
+  SETTLEMENT_PENDING
+  SETTLED
+  REJECTED
+}
+
+enum ClaimCategory {
+  PAINTING
+  FIXTURE
+  UTILITIES
+  UNPAID_RENT
+  CLEANING
+}
+
+enum ClaimStatus {
+  PENDING
+  SUPPORTED
+  PARTIAL
+  INSUFFICIENT
+  APPROVED
+  REJECTED
+}
+
 model User {
   id                String    @id @default(uuid())
   name              String
@@ -26,6 +56,7 @@ model User {
   role              UserRole
   landlordTenancies Tenancy[] @relation("LandlordTenancies")
   tenantTenancies   Tenancy[] @relation("TenantTenancies")
+  initiatedDisputes Dispute[]
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 }
@@ -55,6 +86,49 @@ model Tenancy {
   monthlyRent     Decimal   @db.Decimal(12, 2)
   securityDeposit Decimal   @db.Decimal(12, 2)
   agreementUrl    String?
+  disputes        Dispute[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+model Dispute {
+  id                  String        @id @default(uuid())
+  caseNumber          String        @unique
+  tenancyId           String
+  status              DisputeStatus @default(DRAFT)
+  initiatedBy         String
+  totalDeposit        Decimal       @db.Decimal(12, 2)
+  claimedDeduction    Decimal       @db.Decimal(12, 2)
+  calculatedDeduction Decimal?      @db.Decimal(12, 2)
+  tenantOffer         Decimal?      @db.Decimal(12, 2)
+  landlordOffer       Decimal?      @db.Decimal(12, 2)
+  currentRound        Int           @default(0)
+  settlementEligible  Boolean       @default(false)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  tenancy             Tenancy       @relation(fields: [tenancyId], references: [id])
+  initiator           User          @relation(fields: [initiatedBy], references: [id])
+  claims              Claim[]
+
+  @@index([tenancyId])
+  @@index([initiatedBy])
+  @@index([status])
+}
+
+model Claim {
+  id                     String        @id @default(uuid())
+  disputeId              String
+  category               ClaimCategory
+  description            String
+  claimedAmount          Decimal       @db.Decimal(12, 2)
+  approvedAmount         Decimal?      @db.Decimal(12, 2)
+  status                 ClaimStatus   @default(PENDING)
+  calculationExplanation String?       @db.Text
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  dispute                Dispute       @relation(fields: [disputeId], references: [id])
+
+  @@index([disputeId])
+  @@index([category])
+  @@index([status])
 }
