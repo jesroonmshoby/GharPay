@@ -5,6 +5,7 @@ import {
   getCaseDetailsHandler,
   reviewCaseHandler,
   submitRecommendationHandler,
+  reviewClaimHandler,
 } from '../controllers/mediator.controller';
 import { authenticateJwt, requireRole } from '../middleware/auth';
 import { UserRole } from '@prisma/client';
@@ -20,5 +21,6 @@ router.get('/my-cases', listMyCasesHandler);
 router.get('/cases/:disputeId', getCaseDetailsHandler);
 router.post('/cases/:disputeId/review', reviewCaseHandler);
 router.post('/cases/:disputeId/recommendation', submitRecommendationHandler);
+router.post('/claims/:claimId/review', reviewClaimHandler);
 
 export default router;

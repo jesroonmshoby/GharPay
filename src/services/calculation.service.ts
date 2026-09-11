@@ -67,43 +67,32 @@ export const calculateDispute = async (
     throw err;
   }
 
+  // Verify all claims have been reviewed by mediator
+  const unreviewedClaims = dispute.claims.filter(
+    (c) => c.status === ClaimStatus.PENDING || c.status === ClaimStatus.NEEDS_CLARIFICATION
+  );
+
+  if (unreviewedClaims.length > 0) {
+    const err = new Error('All claims must be reviewed by the mediator before calculation.');
+    (err as any).statusCode = 400;
+    (err as any).code = 'CLAIMS_AWAITING_MEDIATOR_REVIEW';
+    throw err;
+  }
+
   const evaluatedClaims = dispute.claims.map((claim) => {
-    const hasEvidence = claim.evidence.length > 0;
+    const approvedAmountDecimal = claim.approvedAmount || new Prisma.Decimal(0);
     const rule = calculationRules[claim.category];
 
-    let approvedAmountDecimal: Prisma.Decimal;
-    let claimStatus: ClaimStatus;
-    let explanation: string;
-
-    if (!hasEvidence) {
-      approvedAmountDecimal = new Prisma.Decimal(0);
-      claimStatus = ClaimStatus.INSUFFICIENT;
-      explanation = `No supporting evidence was provided for this claim.`;
-    } else {
-      approvedAmountDecimal = calculateCategoryApproval(
-        claim.category,
-        claim.claimedAmount
-      );
-
-      if (approvedAmountDecimal.equals(claim.claimedAmount)) {
-        claimStatus = ClaimStatus.APPROVED;
-        explanation = `Evidence was provided. Claimed ₹${claim.claimedAmount.toFixed(
-          2
-        )}. The claim was evaluated and fully approved at ₹${approvedAmountDecimal.toFixed(
-          2
-        )} under the ${rule.name}.`;
-      } else if (approvedAmountDecimal.greaterThan(0)) {
-        claimStatus = ClaimStatus.PARTIAL;
-        explanation = `Evidence was provided. Claimed ₹${claim.claimedAmount.toFixed(
-          2
-        )}. Claim ${rule.policyDescription} at ₹${approvedAmountDecimal.toFixed(
-          2
-        )}.`;
+    let explanation = claim.calculationExplanation;
+    if (!explanation) {
+      if (claim.status === ClaimStatus.APPROVED) {
+        explanation = `Approved at ₹${approvedAmountDecimal.toFixed(2)} based on mediator review under ${rule.name}.`;
+      } else if (claim.status === ClaimStatus.PARTIAL) {
+        explanation = `Partially approved at ₹${approvedAmountDecimal.toFixed(2)} based on mediator review under ${rule.name}.`;
+      } else if (claim.status === ClaimStatus.REJECTED) {
+        explanation = `Rejected at ₹0.00 based on mediator review under ${rule.name}.`;
       } else {
-        claimStatus = ClaimStatus.INSUFFICIENT;
-        explanation = `Evidence was provided. Claimed ₹${claim.claimedAmount.toFixed(
-          2
-        )}, but the claim could not be approved under the ${rule.name}.`;
+        explanation = `Evaluated at ₹${approvedAmountDecimal.toFixed(2)} based on mediator review.`;
       }
     }
 
@@ -113,7 +102,7 @@ export const calculateDispute = async (
       claimedAmountDecimal: claim.claimedAmount,
       approvedAmountDecimal,
       status: claim.status,
-      newStatus: claimStatus,
+      newStatus: claim.status,
       explanation,
     };
   });
@@ -130,8 +119,6 @@ export const calculateDispute = async (
       await tx.claim.update({
         where: { id: evaluated.id },
         data: {
-          approvedAmount: evaluated.approvedAmountDecimal,
-          status: evaluated.newStatus,
           calculationExplanation: evaluated.explanation,
         },
       });

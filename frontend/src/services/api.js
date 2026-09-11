@@ -149,7 +149,7 @@ export const api = {
       }),
   },
 
-  // Dispute Actions (Outside Agreement & Court Case Application)
+  // Dispute Actions (Outside Agreement, Court Case Application & Mediator Review Request)
   disputeActions: {
     proposeOutsideAgreement: (disputeId) =>
       request(`/disputes/${disputeId}/outside-agreement/propose`, {
@@ -164,6 +164,10 @@ export const api = {
       request(`/disputes/${disputeId}/court-application`, {
         method: 'POST',
         body: JSON.stringify(data),
+      }),
+    requestMediatorReview: (disputeId) =>
+      request(`/disputes/${disputeId}/request-mediator-review`, {
+        method: 'POST',
       }),
   },
 
@@ -194,6 +198,11 @@ export const api = {
     reviewCase: (disputeId) =>
       request(`/mediator/cases/${disputeId}/review`, {
         method: 'POST',
+      }),
+    reviewClaim: (claimId, data) =>
+      request(`/mediator/claims/${claimId}/review`, {
+        method: 'POST',
+        body: JSON.stringify(data),
       }),
     submitRecommendation: (disputeId, data) =>
       request(`/mediator/cases/${disputeId}/recommendation`, {

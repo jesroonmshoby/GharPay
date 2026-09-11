@@ -1,6 +1,8 @@
+import bcrypt from 'bcryptjs';
 import {
   Prisma,
   DisputeStatus,
+  ClaimStatus,
   MediatorRecommendation,
   AuditAction,
   UserRole,
@@ -419,6 +421,29 @@ export const submitMediatorRecommendation = async (
       },
     });
 
+    if (recommendation === MediatorRecommendation.READY_FOR_SETTLEMENT) {
+      const agreedDeduction =
+        dispute.tenantOffer && dispute.landlordOffer && dispute.tenantOffer.equals(dispute.landlordOffer)
+          ? dispute.tenantOffer
+          : dispute.calculatedDeduction || dispute.claimedDeduction;
+      const refundAmount = dispute.totalDeposit.sub(agreedDeduction);
+
+      await tx.settlement.upsert({
+        where: { disputeId },
+        create: {
+          disputeId,
+          agreedDeduction,
+          refundAmount,
+          consentTenant: false,
+          consentLandlord: false,
+        },
+        update: {
+          agreedDeduction,
+          refundAmount,
+        },
+      });
+    }
+
     await tx.auditLog.create({
       data: {
         disputeId,
@@ -440,5 +465,142 @@ export const submitMediatorRecommendation = async (
       status: updated.status,
       note: note || null,
     };
+  });
+};
+
+/**
+ * Gets or seeds the default mediator (Priya Menon)
+ */
+export const getDefaultMediator = async () => {
+  let mediator = await prisma.user.findFirst({
+    where: { email: 'priya.mediator@gharpay.in' },
+  });
+
+  if (!mediator) {
+    mediator = await prisma.user.findFirst({
+      where: { role: UserRole.MEDIATOR },
+    });
+  }
+
+  if (!mediator) {
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash('password123', salt);
+    mediator = await prisma.user.create({
+      data: {
+        name: 'Priya Menon',
+        email: 'priya.mediator@gharpay.in',
+        phone: '+919876543210',
+        passwordHash,
+        role: UserRole.MEDIATOR,
+      },
+    });
+  }
+
+  return mediator;
+};
+
+/**
+ * Mediator reviews an individual claim (Approve / Partial / Reject / Needs Clarification)
+ */
+export const reviewClaimByMediator = async (
+  claimId: string,
+  mediatorId: string,
+  status: ClaimStatus,
+  approvedAmount?: number,
+  reviewNote?: string
+) => {
+  const claim = await prisma.claim.findUnique({
+    where: { id: claimId },
+    include: { dispute: true },
+  });
+
+  if (!claim) {
+    const err = new Error('Claim not found');
+    (err as any).statusCode = 404;
+    (err as any).code = 'NOT_FOUND';
+    throw err;
+  }
+
+  const mediatorUser = await prisma.user.findUnique({
+    where: { id: mediatorId },
+  });
+
+  if (!mediatorUser || mediatorUser.role !== UserRole.MEDIATOR) {
+    const err = new Error('Only an authorized MEDIATOR can review claims');
+    (err as any).statusCode = 403;
+    (err as any).code = 'FORBIDDEN';
+    throw err;
+  }
+
+  const validStatuses: ClaimStatus[] = [
+    ClaimStatus.APPROVED,
+    ClaimStatus.PARTIAL,
+    ClaimStatus.REJECTED,
+    ClaimStatus.NEEDS_CLARIFICATION,
+  ];
+  if (!validStatuses.includes(status)) {
+    const err = new Error(`Invalid claim review status. Must be one of: ${validStatuses.join(', ')}`);
+    (err as any).statusCode = 400;
+    (err as any).code = 'INVALID_STATUS';
+    throw err;
+  }
+
+  let finalApprovedDecimal: Prisma.Decimal;
+
+  if (status === ClaimStatus.APPROVED) {
+    finalApprovedDecimal = claim.claimedAmount;
+  } else if (status === ClaimStatus.REJECTED || status === ClaimStatus.NEEDS_CLARIFICATION) {
+    finalApprovedDecimal = new Prisma.Decimal(0);
+  } else if (status === ClaimStatus.PARTIAL) {
+    if (approvedAmount === undefined || approvedAmount === null) {
+      const err = new Error('approvedAmount is required for PARTIAL claim review');
+      (err as any).statusCode = 400;
+      (err as any).code = 'INVALID_INPUT';
+      throw err;
+    }
+    const dec = new Prisma.Decimal(approvedAmount);
+    if (dec.isNegative() || dec.greaterThan(claim.claimedAmount)) {
+      const err = new Error('approvedAmount must be between 0 and claimedAmount');
+      (err as any).statusCode = 400;
+      (err as any).code = 'INVALID_APPROVED_AMOUNT';
+      throw err;
+    }
+    finalApprovedDecimal = dec;
+  } else {
+    finalApprovedDecimal = new Prisma.Decimal(0);
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    const updatedClaim = await tx.claim.update({
+      where: { id: claimId },
+      data: {
+        status,
+        approvedAmount: finalApprovedDecimal,
+        mediatorReviewedBy: mediatorId,
+        mediatorReviewedAt: new Date(),
+        mediatorReviewNote: reviewNote || null,
+        calculationExplanation: reviewNote
+          ? `Mediator review (${status}): ${reviewNote}`
+          : `Claim reviewed by mediator: ${status}`,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        disputeId: claim.disputeId,
+        userId: mediatorId,
+        action: AuditAction.MEDIATOR_REVIEWED,
+        metadata: {
+          claimId,
+          category: claim.category,
+          status,
+          claimedAmount: claim.claimedAmount.toFixed(2),
+          approvedAmount: finalApprovedDecimal.toFixed(2),
+          reviewNote: reviewNote || null,
+        },
+      },
+    });
+
+    return updatedClaim;
   });
 };

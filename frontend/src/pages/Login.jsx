@@ -82,35 +82,22 @@ export const Login = () => {
           </div>
         )}
 
-        {/* Demo Quick Logins */}
+        {/* Default Mediator Quick Sign-In */}
         <div className="bg-[#F7F7F5] border border-[#E5E5E5] p-4 rounded-xl space-y-2">
           <span className="text-[11px] font-bold uppercase tracking-wider text-[#505423] block">
-            Demo 1-Click Quick Sign-In
+            Default Mediator Quick Sign-In
           </span>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('ramesh.landlord@gharpay.in')}
-              className="text-xs font-semibold py-2 px-2 bg-white border border-[#E5E5E5] hover:border-[#B68400] text-[#111111] rounded-lg transition-all text-center hover:bg-[#B68400]/5"
-            >
-              🏠 Landlord
-              <span className="block text-[9px] text-[#737373] font-normal mt-0.5">Ramesh</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('aarav.tenant@gharpay.in')}
-              className="text-xs font-semibold py-2 px-2 bg-white border border-[#E5E5E5] hover:border-[#1B8E13] text-[#111111] rounded-lg transition-all text-center hover:bg-[#1B8E13]/5"
-            >
-              🔑 Tenant
-              <span className="block text-[9px] text-[#737373] font-normal mt-0.5">Aarav</span>
-            </button>
+          <div>
             <button
               type="button"
               onClick={() => handleDemoLogin('priya.mediator@gharpay.in')}
-              className="text-xs font-semibold py-2 px-2 bg-white border border-[#E5E5E5] hover:border-[#505423] text-[#111111] rounded-lg transition-all text-center hover:bg-[#505423]/5"
+              className="w-full text-xs font-semibold py-2.5 px-3 bg-white border border-[#E5E5E5] hover:border-[#505423] text-[#111111] rounded-lg transition-all flex items-center justify-between hover:bg-[#505423]/5 shadow-sm"
             >
-              ⚖️ Mediator
-              <span className="block text-[9px] text-[#737373] font-normal mt-0.5">Priya</span>
+              <div className="flex items-center space-x-2">
+                <span>⚖️ Mediator Account</span>
+                <span className="text-[#505423] font-bold">(Priya Menon)</span>
+              </div>
+              <span className="text-[10px] text-[#737373]">priya.mediator@gharpay.in</span>
             </button>
           </div>
         </div>
@@ -131,7 +118,7 @@ export const Login = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2.5 border border-[#E5E5E5] rounded-xl text-sm placeholder-[#737373] focus:outline-none focus:ring-2 focus:ring-[#B68400] focus:border-transparent text-[#111111]"
-                  placeholder="e.g. ramesh.landlord@gharpay.in"
+                  placeholder="e.g. user@example.com"
                 />
               </div>
             </div>

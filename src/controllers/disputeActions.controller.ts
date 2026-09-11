@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { DisputeStatus, AuditAction, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { getDefaultMediator } from '../services/mediator.service';
 
 /**
  * POST /api/disputes/:disputeId/outside-agreement/propose
@@ -352,6 +353,103 @@ export const submitCourtApplicationHandler = async (
       success: true,
       message: 'Online Court Case Registration Application generated successfully.',
       courtApplication,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/disputes/:disputeId/request-mediator-review
+ * Requests mediator review for claims or settlement
+ */
+export const requestMediatorReviewHandler = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user?.userId;
+    const disputeId = req.params.disputeId as string;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      });
+      return;
+    }
+
+    const dispute = await prisma.dispute.findUnique({
+      where: { id: disputeId },
+      include: {
+        tenancy: true,
+        claims: true,
+      },
+    });
+
+    if (!dispute) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Dispute case not found' },
+      });
+      return;
+    }
+
+    const isLandlord = dispute.tenancy.landlordId === userId;
+    const isTenant = dispute.tenancy.tenantId === userId;
+
+    if (!isLandlord && !isTenant) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: 'You are not authorized for this dispute' },
+      });
+      return;
+    }
+
+    if (dispute.claims.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'NO_CLAIMS',
+          message: 'At least one claim must be added before requesting mediator review.',
+        },
+      });
+      return;
+    }
+
+    let mediatorId = dispute.mediatorId;
+    if (!mediatorId) {
+      const defaultMediator = await getDefaultMediator();
+      mediatorId = defaultMediator.id;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.dispute.update({
+        where: { id: dispute.id },
+        data: {
+          status: DisputeStatus.MEDIATOR_REVIEW,
+          mediatorId,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          disputeId: dispute.id,
+          userId,
+          action: AuditAction.MEDIATOR_REVIEW_REQUESTED,
+          metadata: {
+            requestedBy: userId,
+            mediatorId,
+            timestamp: new Date().toISOString(),
+          },
+        },
+      });
+    });
+
+    res.json({
+      success: true,
+      message: 'Mediator review requested successfully. Case submitted for review.',
     });
   } catch (error) {
     next(error);

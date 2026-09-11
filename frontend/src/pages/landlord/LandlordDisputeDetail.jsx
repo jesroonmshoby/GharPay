@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 
 import CourtRegistrationModal from '../../components/common/CourtRegistrationModal';
+import SettlementFlowCard from '../../components/common/SettlementFlowCard';
 
 const EVIDENCE_TYPES = [
   { value: 'PHOTO', label: 'Photo' },
@@ -37,6 +38,7 @@ export const LandlordDisputeDetail = () => {
   const { id } = useParams();
   const { showSuccess, showError } = useNotification();
   const [dispute, setDispute] = useState(null);
+  const [settlement, setSettlement] = useState(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [showCourtModal, setShowCourtModal] = useState(false);
@@ -125,6 +127,12 @@ export const LandlordDisputeDetail = () => {
     try {
       const res = await api.landlord.getDispute(id);
       setDispute(res.dispute);
+      const sRes = await api.settlement.getSettlement(id).catch(() => null);
+      if (sRes && sRes.settlement) {
+        setSettlement(sRes.settlement);
+      } else {
+        setSettlement(null);
+      }
     } catch (err) {
       showError(err.message || 'Failed to load dispute details');
     } finally {
@@ -277,6 +285,16 @@ export const LandlordDisputeDetail = () => {
     }
   };
 
+  const handleRequestMediatorReview = async () => {
+    try {
+      const res = await api.disputeActions.requestMediatorReview(id);
+      showSuccess(res.message || 'Mediator review requested successfully.');
+      await fetchDisputeDetails();
+    } catch (err) {
+      showError(err.message || 'Unable to request mediator review. Please try again.');
+    }
+  };
+
   const getEvidenceTypeLabel = (typeKey) => {
     const found = EVIDENCE_TYPES.find((t) => t.value === typeKey);
     return found ? found.label : typeKey;
@@ -323,6 +341,14 @@ export const LandlordDisputeDetail = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleRequestMediatorReview}
+            className="inline-flex items-center space-x-2 bg-[#505423] hover:bg-[#3f421b] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all"
+          >
+            <Scale className="w-4 h-4" />
+            <span>Request Mediator Review</span>
+          </button>
+
           {dispute.status === 'DRAFT' ? (
             <button
               onClick={handleDeleteDispute}
@@ -489,6 +515,14 @@ export const LandlordDisputeDetail = () => {
         </div>
       </div>
 
+      {/* Prominent Settlement Flow Card */}
+      <SettlementFlowCard
+        dispute={dispute}
+        settlement={settlement}
+        userRole="LANDLORD"
+        onRefresh={fetchDisputeDetails}
+      />
+
       {/* Claims Breakdown */}
       <div className="bg-white rounded-2xl border border-[#E5E5E5] shadow-sm overflow-hidden">
         <div className="p-6 border-b border-[#E5E5E5] flex justify-between items-center">
@@ -582,8 +616,14 @@ export const LandlordDisputeDetail = () => {
                   <div className="flex items-center space-x-3">
                     <div className="text-right">
                       <span className="text-xs text-[#737373] block">Claimed: {formatINR(c.claimedAmount)}</span>
-                      {c.approvedAmount !== null && c.approvedAmount !== undefined && (
-                        <span className="text-sm font-bold text-[#1B8E13] block">Engine Approved: {formatINR(c.approvedAmount)}</span>
+                      {c.status === 'PENDING' ? (
+                        <span className="text-xs font-bold text-[#505423] bg-[#505423]/10 px-2 py-0.5 rounded block mt-0.5">
+                          Awaiting Mediator Review
+                        </span>
+                      ) : (
+                        <span className="text-sm font-bold text-[#1B8E13] block">
+                          Mediator {c.status}: {formatINR(c.approvedAmount || 0)}
+                        </span>
                       )}
                     </div>
                     <button

@@ -16,6 +16,7 @@ import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { calculateDispute } from '../services/calculation.service';
 import { getLandlordDisputes, getPendingOutsideAgreement } from '../services/negotiation.service';
+import { getDefaultMediator } from '../services/mediator.service';
 
 /**
  * Helper to format Prisma Decimal objects to clean string representations for JSON responses
@@ -377,6 +378,7 @@ export const createDispute = async (
     }
 
     const caseNumber = await generateCaseNumber();
+    const defaultMediator = await getDefaultMediator();
 
     const result = await prisma.$transaction(async (tx) => {
       const newDispute = await tx.dispute.create({
@@ -384,6 +386,7 @@ export const createDispute = async (
           caseNumber,
           tenancyId: tenancy.id,
           initiatedBy: landlordId,
+          mediatorId: defaultMediator.id,
           totalDeposit: tenancy.securityDeposit,
           claimedDeduction: claimedDeductionDecimal,
           calculatedDeduction: null,

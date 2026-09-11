@@ -17,6 +17,7 @@ import {
   Scale,
 } from 'lucide-react';
 import CourtRegistrationModal from '../../components/common/CourtRegistrationModal';
+import SettlementFlowCard from '../../components/common/SettlementFlowCard';
 
 export const TenantDisputeDetail = () => {
   const { id } = useParams();
@@ -64,10 +65,11 @@ export const TenantDisputeDetail = () => {
       const res = await api.tenant.getDispute(id);
       setDispute(res.dispute);
 
-      // Attempt to load settlement if in SETTLEMENT_PENDING or SETTLED
-      if (res.dispute.status === 'SETTLEMENT_PENDING' || res.dispute.status === 'SETTLED') {
-        const sRes = await api.settlement.getSettlement(id).catch(() => null);
-        if (sRes) setSettlement(sRes.settlement);
+      const sRes = await api.settlement.getSettlement(id).catch(() => null);
+      if (sRes && sRes.settlement) {
+        setSettlement(sRes.settlement);
+      } else {
+        setSettlement(null);
       }
     } catch (err) {
       showError(err.message || 'Failed to load dispute details');
@@ -191,6 +193,22 @@ export const TenantDisputeDetail = () => {
 
         {/* Dynamic Actions Based on Status */}
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={async () => {
+              try {
+                const res = await api.disputeActions.requestMediatorReview(id);
+                showSuccess(res.message || 'Mediator review requested successfully.');
+                await fetchDisputeDetails();
+              } catch (err) {
+                showError(err.message || 'Unable to request mediator review. Please try again.');
+              }
+            }}
+            className="inline-flex items-center space-x-2 bg-[#505423] hover:bg-[#3f421b] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all"
+          >
+            <Scale className="w-4 h-4" />
+            <span>Request Mediator Review</span>
+          </button>
+
           {dispute.status !== 'DRAFT' && dispute.status !== 'SETTLED' && (
             <button
               onClick={handleProposeOutsideAgreement}
@@ -360,6 +378,14 @@ export const TenantDisputeDetail = () => {
         </div>
       </div>
 
+      {/* Prominent Settlement Flow Card */}
+      <SettlementFlowCard
+        dispute={dispute}
+        settlement={settlement}
+        userRole="TENANT"
+        onRefresh={fetchDisputeDetails}
+      />
+
       {/* Claims & ODR Calculation Breakdown */}
       <div className="bg-white rounded-2xl border border-[#E5E5E5] shadow-sm overflow-hidden">
         <div className="p-6 border-b border-[#E5E5E5]">
@@ -382,8 +408,14 @@ export const TenantDisputeDetail = () => {
                   </div>
                   <div className="text-right">
                     <span className="text-xs text-[#737373] block">Landlord Claimed: {formatINR(c.claimedAmount)}</span>
-                    {c.approvedAmount !== null && (
-                      <span className="text-sm font-bold text-[#1B8E13] block">Engine Approved: {formatINR(c.approvedAmount)}</span>
+                    {c.status === 'PENDING' ? (
+                      <span className="text-xs font-bold text-[#505423] bg-[#505423]/10 px-2 py-0.5 rounded block mt-0.5">
+                        Awaiting Mediator Review
+                      </span>
+                    ) : (
+                      <span className="text-sm font-bold text-[#1B8E13] block">
+                        Mediator {c.status}: {formatINR(c.approvedAmount || 0)}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -496,81 +528,6 @@ export const TenantDisputeDetail = () => {
               Submit Tenant Offer
             </button>
           </form>
-        </div>
-      )}
-
-      {/* Settlement & Consent Section */}
-      {(dispute.status === 'SETTLEMENT_PENDING' || dispute.status === 'SETTLED') && settlement && (
-        <div className="bg-white rounded-2xl border border-[#E5E5E5] p-6 space-y-6 shadow-sm">
-          <div className="flex items-center space-x-3">
-            <Award className="w-6 h-6 text-[#1B8E13]" />
-            <div>
-              <h2 className="text-base font-extrabold text-[#111111]">
-                {dispute.status === 'SETTLED' ? 'Settlement Completed & Recorded' : 'Settlement Review & Consent'}
-              </h2>
-              <p className="text-xs text-[#737373]">
-                GharPay ODR Agreement Summary
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#F7F7F5] p-5 rounded-xl border border-[#E5E5E5]">
-            <div>
-              <span className="text-xs text-[#737373] block uppercase font-semibold">Agreed Deduction</span>
-              <span className="text-2xl font-extrabold text-[#111111] mt-1 block">{formatINR(settlement.agreedDeduction)}</span>
-            </div>
-            <div>
-              <span className="text-xs text-[#737373] block uppercase font-semibold">Refund Amount to Tenant</span>
-              <span className="text-2xl font-extrabold text-[#1B8E13] mt-1 block">{formatINR(settlement.refundAmount)}</span>
-            </div>
-          </div>
-
-          {/* Consent Status Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className={`p-4 rounded-xl border ${settlement.consentTenant ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
-              <span className="text-xs font-bold text-[#111111] block">Tenant Consent (Aarav Sharma)</span>
-              <span className="text-xs mt-1 block">
-                {settlement.consentTenant ? '✓ Explicit Consent Recorded' : 'Pending Consent'}
-              </span>
-            </div>
-            <div className={`p-4 rounded-xl border ${settlement.consentLandlord ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
-              <span className="text-xs font-bold text-[#111111] block">Landlord Consent (Ramesh Kumar)</span>
-              <span className="text-xs mt-1 block">
-                {settlement.consentLandlord ? '✓ Explicit Consent Recorded' : 'Pending Consent'}
-              </span>
-            </div>
-          </div>
-
-          {/* Consent Button for Tenant */}
-          {!settlement.consentTenant && dispute.status === 'SETTLEMENT_PENDING' && (
-            <div className="pt-2">
-              <button
-                onClick={handleTenantConsent}
-                disabled={submitting}
-                className="w-full py-3.5 bg-[#1B8E13] hover:bg-[#15700f] text-white text-xs font-extrabold rounded-xl shadow-md transition-all disabled:opacity-50 flex items-center justify-center space-x-2"
-              >
-                <CheckCircle className="w-4 h-4" />
-                <span>I agree to this settlement</span>
-              </button>
-            </div>
-          )}
-
-          {/* Download Settlement PDF Button */}
-          {dispute.status === 'SETTLED' && (
-            <div className="pt-2 border-t border-[#E5E5E5] flex items-center justify-between">
-              <div className="text-xs text-[#1B8E13] font-bold flex items-center space-x-2">
-                <FileCheck className="w-5 h-5" />
-                <span>Both parties have consented. Settlement recorded.</span>
-              </div>
-              <button
-                onClick={handleDownloadPdf}
-                className="inline-flex items-center space-x-2 bg-[#B68400] hover:bg-[#966d00] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-sm transition-all"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download Settlement PDF</span>
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>
