@@ -388,6 +388,63 @@ export const LandlordDisputeDetail = () => {
         </div>
       )}
 
+      {/* Outside Agreement Proposal Pending Card */}
+      {dispute.outsideAgreement && (
+        dispute.outsideAgreement.proposedBy === JSON.parse(localStorage.getItem('gharpay_user') || '{}').id ? (
+          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 p-6 rounded-2xl shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-amber-100 dark:bg-amber-900/60 rounded-xl text-amber-700 dark:text-amber-300 shrink-0">
+                <Clock className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-amber-900 dark:text-amber-100">
+                  Outside Settlement Proposal Pending
+                </h3>
+                <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                  You have requested an out-of-court settlement for this dispute. Awaiting mutual consent from the Tenant.
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-semibold px-3.5 py-2 bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 rounded-xl border border-amber-300 dark:border-amber-700">
+              Awaiting Tenant Consent
+            </span>
+          </div>
+        ) : (
+          <div className="bg-gradient-to-r from-emerald-900 via-emerald-850 to-zinc-900 text-white p-6 rounded-2xl shadow-lg border border-emerald-700/60 space-y-4">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-emerald-500/20 rounded-xl border border-emerald-400/30 text-emerald-300 shrink-0">
+                <FileText className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-extrabold text-emerald-200">
+                  Out-of-Court Settlement Proposed by Tenant
+                </h3>
+                <p className="text-xs text-emerald-100/90 max-w-2xl">
+                  The tenant has requested to settle this deposit dispute outside of GharPay conciliation. Do you agree to accept mutual outside settlement and close this case?
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-emerald-700/50">
+              <button
+                onClick={() => handleRespondOutsideAgreement(true)}
+                className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2"
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span>Accept Outside Agreement & Close Case</span>
+              </button>
+
+              <button
+                onClick={() => handleRespondOutsideAgreement(false)}
+                className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-red-300 border border-red-900/60 font-semibold text-xs rounded-xl transition-all"
+              >
+                <span>Decline & Continue ODR Conciliation</span>
+              </button>
+            </div>
+          </div>
+        )
+      )}
+
       {/* Court Registration Modal */}
       <CourtRegistrationModal
         isOpen={showCourtModal}

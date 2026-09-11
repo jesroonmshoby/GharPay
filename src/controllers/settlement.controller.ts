@@ -6,6 +6,8 @@ import {
   getSettlement,
   recordTenantConsent,
   recordLandlordConsent,
+  markPaymentAsPaid,
+  checkAndCompleteSettlement,
 } from '../services/settlement.service';
 import { prisma } from '../lib/prisma';
 import fs from 'fs';
@@ -240,6 +242,63 @@ export const landlordConsentHandler = async (
 };
 
 /**
+ * POST /api/settlements/:disputeId/mark-paid
+ * Landlord-only action to mark refund as paid outside GharPay
+ */
+export const markPaymentAsPaidHandler = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const landlordUserId = req.user?.userId;
+    const disputeId = req.params.disputeId as string;
+
+    if (!landlordUserId) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+      });
+      return;
+    }
+
+    if (!disputeId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'disputeId URL parameter is required',
+        },
+      });
+      return;
+    }
+
+    const settlement = await markPaymentAsPaid(disputeId, landlordUserId);
+
+    res.json({
+      success: true,
+      message: 'Refund payment marked as paid outside GharPay.',
+      settlement,
+    });
+  } catch (error: any) {
+    if (error.statusCode) {
+      res.status(error.statusCode).json({
+        success: false,
+        error: {
+          code: error.code || 'ERROR',
+          message: error.message,
+        },
+      });
+      return;
+    }
+    next(error);
+  }
+};
+
+/**
  * GET /api/settlements/:disputeId/pdf
  * Downloads generated settlement PDF document (Authorized users only)
  */
@@ -301,12 +360,17 @@ export const downloadPdfHandler = async (
     const safeFileName = path.basename(`${dispute.caseNumber}_settlement.pdf`);
     const filePath = path.join(storageDir, safeFileName);
 
+    // If PDF file does not exist on disk, generate it lazily now
     if (!fs.existsSync(filePath)) {
-      res.status(404).json({
+      await checkAndCompleteSettlement(disputeId, true);
+    }
+
+    if (!fs.existsSync(filePath)) {
+      res.status(500).json({
         success: false,
         error: {
-          code: 'FILE_NOT_FOUND',
-          message: 'PDF file has not been generated on storage',
+          code: 'FILE_GENERATION_FAILED',
+          message: 'Unable to generate PDF document on server',
         },
       });
       return;

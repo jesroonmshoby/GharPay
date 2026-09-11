@@ -15,7 +15,7 @@ import {
 import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { calculateDispute } from '../services/calculation.service';
-import { getLandlordDisputes } from '../services/negotiation.service';
+import { getLandlordDisputes, getPendingOutsideAgreement } from '../services/negotiation.service';
 
 /**
  * Helper to format Prisma Decimal objects to clean string representations for JSON responses
@@ -827,6 +827,8 @@ export const getDisputeDetails = async (
       return;
     }
 
+    const outsideAgreement = await getPendingOutsideAgreement(disputeId);
+
     res.json({
       success: true,
       dispute: {
@@ -838,6 +840,7 @@ export const getDisputeDetails = async (
         calculatedDeduction: formatDecimal(dispute.calculatedDeduction),
         currentRound: dispute.currentRound,
         settlementEligible: dispute.settlementEligible,
+        outsideAgreement,
         claims: dispute.claims.map((claim) => ({
           id: claim.id,
           category: claim.category,

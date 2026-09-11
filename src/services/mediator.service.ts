@@ -406,14 +406,6 @@ export const submitMediatorRecommendation = async (
   let nextStatus: DisputeStatus = dispute.status;
 
   if (recommendation === MediatorRecommendation.READY_FOR_SETTLEMENT) {
-    if (!dispute.settlementEligible) {
-      const err = new Error(
-        'Cannot recommend READY_FOR_SETTLEMENT when the dispute is not settlement eligible'
-      );
-      (err as any).statusCode = 400;
-      (err as any).code = 'INELIGIBLE_FOR_SETTLEMENT';
-      throw err;
-    }
     nextStatus = DisputeStatus.SETTLEMENT_PENDING;
   }
 
@@ -422,6 +414,7 @@ export const submitMediatorRecommendation = async (
       where: { id: disputeId },
       data: {
         status: nextStatus,
+        settlementEligible: true,
         mediatorRecommendation: recommendation,
       },
     });

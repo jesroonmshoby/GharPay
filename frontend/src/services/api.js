@@ -225,6 +225,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ consent }),
       }),
+    markAsPaid: (disputeId) =>
+      request(`/settlements/${disputeId}/mark-paid`, {
+        method: 'POST',
+      }),
     downloadPdf: (disputeId) =>
       request(`/settlements/${disputeId}/pdf`, {
         responseType: 'blob',
