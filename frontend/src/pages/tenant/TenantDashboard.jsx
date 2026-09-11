@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
+import { useNotification } from '../../context/NotificationContext';
 import { formatINR } from '../../utils/formatters';
 import { Key, FileText, ArrowRight, CheckCircle, Clock, AlertTriangle, Shield } from 'lucide-react';
 
 export const TenantDashboard = () => {
+  const { showError } = useNotification();
   const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchTenantDisputes();
@@ -15,13 +16,12 @@ export const TenantDashboard = () => {
 
   const fetchTenantDisputes = async () => {
     setLoading(true);
-    setError('');
     try {
       const res = await api.tenant.getDisputes();
       setDisputes(res.disputes || []);
     } catch (err) {
       console.error('Error loading tenant disputes:', err);
-      setError(err.message || 'Failed to load disputes');
+      showError(err.message || 'Failed to load disputes');
     } finally {
       setLoading(false);
     }

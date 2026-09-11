@@ -10,7 +10,16 @@ import adminRoutes from './routes/admin.routes';
 import settlementRoutes from './routes/settlement.routes';
 import { errorHandler } from './middleware/errorHandler';
 
+import path from 'path';
+import fs from 'fs';
+
 const app: Express = express();
+
+// Ensure storage/uploads directory exists
+const uploadsDir = path.join(process.cwd(), 'storage', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 const allowedOrigins = [
   config.frontendUrl,
@@ -33,7 +42,11 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Serve evidence uploaded files statically
+app.use('/api/storage/uploads', express.static(uploadsDir));
+app.use('/storage/uploads', express.static(uploadsDir));
 
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
@@ -42,6 +55,7 @@ app.use('/api/tenant', tenantRoutes);
 app.use('/api/mediator', mediatorRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/settlements', settlementRoutes);
+
 
 app.use(errorHandler);
 

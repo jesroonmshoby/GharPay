@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../../services/api';
+import { useNotification } from '../../context/NotificationContext';
 import { formatINR, formatDate } from '../../utils/formatters';
 import {
   FileText,
@@ -17,12 +18,11 @@ import {
 
 export const TenantDisputeDetail = () => {
   const { id } = useParams();
+  const { showSuccess, showError } = useNotification();
   const [dispute, setDispute] = useState(null);
   const [settlement, setSettlement] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Tenant offer form state
   const [tenantOfferAmount, setTenantOfferAmount] = useState('26000');
@@ -34,7 +34,6 @@ export const TenantDisputeDetail = () => {
 
   const fetchDisputeDetails = async () => {
     setLoading(true);
-    setError('');
     try {
       const res = await api.tenant.getDispute(id);
       setDispute(res.dispute);
@@ -45,7 +44,7 @@ export const TenantDisputeDetail = () => {
         if (sRes) setSettlement(sRes.settlement);
       }
     } catch (err) {
-      setError(err.message || 'Failed to load dispute details');
+      showError(err.message || 'Failed to load dispute details');
     } finally {
       setLoading(false);
     }
@@ -53,14 +52,12 @@ export const TenantDisputeDetail = () => {
 
   const handleReviewCalculation = async () => {
     setSubmitting(true);
-    setError('');
-    setSuccess('');
     try {
       await api.tenant.reviewDispute(id);
-      setSuccess('Case status updated to TENANT_REVIEW');
+      showSuccess('Case status updated to TENANT_REVIEW');
       await fetchDisputeDetails();
     } catch (err) {
-      setError(err.message || 'Failed to update review status');
+      showError(err.message || 'Failed to update review status');
     } finally {
       setSubmitting(false);
     }
@@ -68,14 +65,12 @@ export const TenantDisputeDetail = () => {
 
   const handleStartNegotiation = async () => {
     setSubmitting(true);
-    setError('');
-    setSuccess('');
     try {
       await api.tenant.startNegotiation(id);
-      setSuccess('Negotiation phase started (Round 1)');
+      showSuccess('Negotiation phase started');
       await fetchDisputeDetails();
     } catch (err) {
-      setError(err.message || 'Failed to start negotiation');
+      showError(err.message || 'Failed to start negotiation');
     } finally {
       setSubmitting(false);
     }
@@ -84,17 +79,15 @@ export const TenantDisputeDetail = () => {
   const handleSubmitOffer = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    setError('');
-    setSuccess('');
     try {
       await api.tenant.submitOffer(id, {
         amount: parseFloat(tenantOfferAmount),
         message: tenantOfferMessage,
       });
-      setSuccess('Tenant offer submitted successfully!');
+      showSuccess('Offer submitted successfully.');
       await fetchDisputeDetails();
     } catch (err) {
-      setError(err.message || 'Failed to submit offer');
+      showError(err.message || 'Failed to submit offer');
     } finally {
       setSubmitting(false);
     }
@@ -102,15 +95,13 @@ export const TenantDisputeDetail = () => {
 
   const handleTenantConsent = async () => {
     setSubmitting(true);
-    setError('');
-    setSuccess('');
     try {
       const res = await api.settlement.tenantConsent(id, true);
-      setSuccess('Your consent has been explicitly recorded!');
+      showSuccess('Tenant consent recorded successfully.');
       setSettlement(res.settlement);
       await fetchDisputeDetails();
     } catch (err) {
-      setError(err.message || 'Failed to record consent');
+      showError(err.message || 'Failed to record consent');
     } finally {
       setSubmitting(false);
     }
@@ -127,8 +118,9 @@ export const TenantDisputeDetail = () => {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      showSuccess('PDF downloaded successfully.');
     } catch (err) {
-      setError(err.message || 'Failed to download PDF');
+      showError(err.message || 'Failed to download PDF');
     }
   };
 
@@ -145,7 +137,7 @@ export const TenantDisputeDetail = () => {
       <div className="max-w-7xl mx-auto px-4 py-12 text-center space-y-4">
         <AlertCircle className="w-10 h-10 text-[#DC2626] mx-auto" />
         <h2 className="text-lg font-bold text-[#111111]">Dispute Not Found</h2>
-        <p className="text-xs text-[#737373]">{error || 'The requested case could not be retrieved.'}</p>
+        <p className="text-xs text-[#737373]">The requested case could not be retrieved.</p>
         <Link to="/tenant" className="inline-block text-xs font-bold text-[#1B8E13]">
           Return to Dashboard
         </Link>
@@ -194,20 +186,6 @@ export const TenantDisputeDetail = () => {
           )}
         </div>
       </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-[#DC2626] text-xs p-4 rounded-xl flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {success && (
-        <div className="bg-green-50 border border-green-200 text-[#1B8E13] text-xs p-4 rounded-xl flex items-center space-x-2">
-          <CheckCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{success}</span>
-        </div>
-      )}
 
       {/* Case Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -273,13 +251,47 @@ export const TenantDisputeDetail = () => {
                   </div>
                 </div>
 
-                {c.explanation && (
+                {c.calculationExplanation && (
                   <div className="bg-[#F7F7F5] border border-[#E5E5E5] p-3.5 rounded-xl text-xs text-[#505423]">
-                    <strong>GharPay ODR Policy Evaluation:</strong> {c.explanation}
+                    <strong>GharPay ODR Policy Evaluation:</strong> {c.calculationExplanation}
+                  </div>
+                )}
+
+                {/* Evidence Attachments Display */}
+                {c.evidence && c.evidence.length > 0 && (
+                  <div className="pt-2 border-t border-[#E5E5E5]/60 space-y-2">
+                    <span className="text-xs font-bold text-[#111111] block">
+                      Supporting Evidence: <strong>{c.evidence.length} file(s) attached</strong>
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {c.evidence.map((ev) => (
+                        <div key={ev.id} className="bg-[#F7F7F5] border border-[#E5E5E5] p-2.5 rounded-xl flex items-center justify-between text-xs">
+                          <div className="truncate pr-2">
+                            <span className="text-[10px] font-extrabold uppercase text-[#B68400] block">
+                              {ev.type}
+                            </span>
+                            <span className="font-semibold text-[#111111] block truncate">
+                              {ev.description || 'Evidence Document'}
+                            </span>
+                          </div>
+                          {ev.fileUrl && (
+                            <a
+                              href={ev.fileUrl.startsWith('http') ? ev.fileUrl : `http://localhost:4000${ev.fileUrl}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center space-x-1 text-[11px] font-bold text-[#505423] hover:text-[#B68400] bg-white border border-[#E5E5E5] px-2.5 py-1 rounded-lg flex-shrink-0"
+                            >
+                              <span>View</span>
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
             ))
+
           ) : (
             <div className="p-6 text-center text-xs text-[#737373]">No claims listed.</div>
           )}

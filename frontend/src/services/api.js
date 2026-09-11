@@ -96,6 +96,7 @@ export const api = {
 
   // Landlord
   landlord: {
+    getDisputes: () => request('/landlord/disputes'),
     createProperty: (data) =>
       request('/landlord/properties', {
         method: 'POST',
@@ -117,12 +118,22 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    deleteClaim: (claimId) =>
+      request(`/landlord/claims/${claimId}`, {
+        method: 'DELETE',
+      }),
     getClaims: (disputeId) => request(`/landlord/disputes/${disputeId}/claims`),
+    uploadEvidenceFile: (data) =>
+      request('/landlord/evidence/upload', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     createEvidence: (claimId, data) =>
       request(`/landlord/claims/${claimId}/evidence`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+
     calculate: (disputeId) =>
       request(`/landlord/disputes/${disputeId}/calculate`, {
         method: 'POST',

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shield, User, Mail, Phone, Lock, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
+import { useNotification } from '../context/NotificationContext';
+import { Shield, User, Mail, Phone, Lock, ArrowRight } from 'lucide-react';
 
 export const Register = () => {
   const [name, setName] = useState('');
@@ -9,20 +10,17 @@ export const Register = () => {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('TENANT');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const { register } = useAuth();
+  const { showSuccess, showError } = useNotification();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters long');
+      showError('Password must be at least 8 characters long');
       return;
     }
 
@@ -37,12 +35,12 @@ export const Register = () => {
         role,
       });
 
-      setSuccess('Account created successfully! Redirecting to login...');
+      showSuccess('Account created successfully! Redirecting to login...');
       setTimeout(() => {
         navigate('/login');
       }, 1500);
     } catch (err) {
-      setError(err.message || 'Registration failed. Please try again.');
+      showError(err.message || 'Registration failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -62,20 +60,6 @@ export const Register = () => {
             Register as a Tenant or Landlord to participate in ODR
           </p>
         </div>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-[#DC2626] text-xs p-3 rounded-lg flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {success && (
-          <div className="bg-green-50 border border-green-200 text-[#1B8E13] text-xs p-3 rounded-lg flex items-center space-x-2">
-            <CheckCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{success}</span>
-          </div>
-        )}
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           {/* Role Selection */}

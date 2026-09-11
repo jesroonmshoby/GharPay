@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
+import { useNotification } from '../../context/NotificationContext';
 import { formatINR } from '../../utils/formatters';
 import { Scale, FileText, ArrowRight, CheckCircle, Clock, Shield } from 'lucide-react';
 
 export const MediatorDashboard = () => {
+  const { showError } = useNotification();
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchMediatorCases();
@@ -15,7 +16,6 @@ export const MediatorDashboard = () => {
 
   const fetchMediatorCases = async () => {
     setLoading(true);
-    setError('');
     try {
       // First try fetching assigned cases, fallback to all mediator cases
       const myRes = await api.mediator.getMyCases().catch(() => null);
@@ -27,7 +27,7 @@ export const MediatorDashboard = () => {
       }
     } catch (err) {
       console.error('Error fetching mediator cases:', err);
-      setError(err.message || 'Failed to load cases');
+      showError(err.message || 'Failed to load cases');
     } finally {
       setLoading(false);
     }

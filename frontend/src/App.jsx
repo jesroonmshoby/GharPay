@@ -1,6 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
+import NotificationContainer from './components/common/NotificationContainer';
 import Navbar from './components/Navbar';
 import Landing from './pages/Landing';
 import HowItWorks from './pages/HowItWorks';
@@ -56,11 +58,13 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <div className="min-h-screen bg-[#F7F7F5] flex flex-col text-[#111111] antialiased">
-          <Navbar />
-          <main className="flex-grow">
+    <NotificationProvider>
+      <AuthProvider>
+        <Router>
+          <div className="min-h-screen bg-[#F7F7F5] flex flex-col text-[#111111] antialiased">
+            <Navbar />
+            <NotificationContainer />
+            <main className="flex-grow">
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<Landing />} />
@@ -210,5 +214,6 @@ export default function App() {
         </div>
       </Router>
     </AuthProvider>
+    </NotificationProvider>
   );
 }

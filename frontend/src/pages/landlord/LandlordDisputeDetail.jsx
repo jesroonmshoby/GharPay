@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../../services/api';
+import { useNotification } from '../../context/NotificationContext';
 import { formatINR, formatDate } from '../../utils/formatters';
 import {
   FileText,
@@ -14,35 +15,67 @@ import {
   Shield,
   MessageSquare,
   Scale,
+  Paperclip,
+  ExternalLink,
+  File,
+  Trash2,
 } from 'lucide-react';
+
+const EVIDENCE_TYPES = [
+  { value: 'PHOTO', label: 'Photo' },
+  { value: 'INVOICE', label: 'Invoice' },
+  { value: 'RECEIPT', label: 'Receipt' },
+  { value: 'AGREEMENT', label: 'Rental Agreement' },
+  { value: 'METER_READING', label: 'Meter Reading' },
+  { value: 'MESSAGE', label: 'Message' },
+  { value: 'OTHER', label: 'Other' },
+];
 
 export const LandlordDisputeDetail = () => {
   const { id } = useParams();
+  const { showSuccess, showError } = useNotification();
   const [dispute, setDispute] = useState(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Add Claim Modal Form State
   const [showClaimForm, setShowClaimForm] = useState(false);
   const [newClaim, setNewClaim] = useState({
-    category: 'PAINTING',
+    category: '',
     description: '',
     claimedAmount: '',
   });
 
   // Upload Evidence Modal Form State
   const [selectedClaimId, setSelectedClaimId] = useState(null);
-  const [newEvidence, setNewEvidence] = useState({
-    type: 'RECEIPT',
-    fileUrl: '',
-    description: '',
-  });
+  const [evidenceType, setEvidenceType] = useState('RECEIPT');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [evidenceDescription, setEvidenceDescription] = useState('');
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [evidenceError, setEvidenceError] = useState('');
 
   // Submit Offer Form State
   const [offerAmount, setOfferAmount] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
+
+  // Delete Claim State
+  const [deletingClaimId, setDeletingClaimId] = useState(null);
+
+  const handleDeleteClaim = async (claimId) => {
+    if (!window.confirm('Are you sure you want to delete this claim item? Any attached evidence will also be removed.')) {
+      return;
+    }
+    setDeletingClaimId(claimId);
+    try {
+      await api.landlord.deleteClaim(claimId);
+      showSuccess('Claim deleted successfully.');
+      await fetchDisputeDetails();
+    } catch (err) {
+      showError(err.message || 'Failed to delete claim');
+    } finally {
+      setDeletingClaimId(null);
+    }
+  };
 
   useEffect(() => {
     fetchDisputeDetails();
@@ -50,12 +83,11 @@ export const LandlordDisputeDetail = () => {
 
   const fetchDisputeDetails = async () => {
     setLoading(true);
-    setError('');
     try {
       const res = await api.landlord.getDispute(id);
       setDispute(res.dispute);
     } catch (err) {
-      setError(err.message || 'Failed to load dispute details');
+      showError(err.message || 'Failed to load dispute details');
     } finally {
       setLoading(false);
     }
@@ -63,14 +95,12 @@ export const LandlordDisputeDetail = () => {
 
   const handleCalculate = async () => {
     setCalculating(true);
-    setError('');
-    setSuccess('');
     try {
       const res = await api.landlord.calculate(id);
-      setSuccess('Deterministic GharPay calculation complete!');
+      showSuccess('Calculation completed successfully.');
       await fetchDisputeDetails();
     } catch (err) {
-      setError(err.message || 'Calculation failed');
+      showError(err.message || 'Calculation failed');
     } finally {
       setCalculating(false);
     }
@@ -78,54 +108,139 @@ export const LandlordDisputeDetail = () => {
 
   const handleAddClaim = async (e) => {
     e.preventDefault();
-    setError('');
+
+    if (!newClaim.category) {
+      showError('Please select a claim category.');
+      return;
+    }
+
+    const desc = newClaim.description.trim();
+    const amount = parseFloat(newClaim.claimedAmount);
+
+    if (!desc) {
+      showError('Please enter a claim description.');
+      return;
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+      showError('Claimed amount must be greater than ₹0.');
+      return;
+    }
+
     try {
       await api.landlord.createClaim(id, {
         category: newClaim.category,
-        description: newClaim.description,
-        claimedAmount: parseFloat(newClaim.claimedAmount),
+        description: desc,
+        claimedAmount: amount,
       });
       setShowClaimForm(false);
-      setNewClaim({ category: 'PAINTING', description: '', claimedAmount: '' });
+      setNewClaim({ category: '', description: '', claimedAmount: '' });
+      showSuccess('Claim added successfully.');
       await fetchDisputeDetails();
     } catch (err) {
-      setError(err.message || 'Failed to add claim');
+      showError(err.message || 'Failed to add claim');
     }
+  };
+
+  const handleFileChange = (e) => {
+    setEvidenceError('');
+    const file = e.target.files?.[0];
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    const extMatch = file.name.match(/\.([a-zA-Z0-9]+)$/);
+    const ext = extMatch ? extMatch[1].toLowerCase() : '';
+    const allowedExts = ['pdf', 'jpg', 'jpeg', 'png'];
+
+    if (!allowedExts.includes(ext)) {
+      setEvidenceError('File type is not supported. Please select a PDF, JPG, JPEG, or PNG file.');
+      setSelectedFile(null);
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setEvidenceError('File is too large. Maximum allowed size is 5MB.');
+      setSelectedFile(null);
+      e.target.value = '';
+      return;
+    }
+
+    setSelectedFile(file);
   };
 
   const handleAddEvidence = async (e) => {
     e.preventDefault();
     if (!selectedClaimId) return;
-    setError('');
+    setEvidenceError('');
+
+    if (!selectedFile) {
+      setEvidenceError('Please select a file.');
+      return;
+    }
+
+    setUploadingEvidence(true);
+
     try {
-      await api.landlord.createEvidence(selectedClaimId, {
-        type: newEvidence.type,
-        fileUrl: newEvidence.fileUrl,
-        description: newEvidence.description,
+      const base64Data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(selectedFile);
       });
+
+      const uploadRes = await api.landlord.uploadEvidenceFile({
+        fileName: selectedFile.name,
+        fileData: base64Data,
+      });
+
+      await api.landlord.createEvidence(selectedClaimId, {
+        type: evidenceType,
+        fileUrl: uploadRes.fileUrl,
+        description: evidenceDescription.trim() || selectedFile.name,
+      });
+
+      const uploadedName = selectedFile.name;
       setSelectedClaimId(null);
-      setNewEvidence({ type: 'RECEIPT', fileUrl: '', description: '' });
+      setSelectedFile(null);
+      setEvidenceDescription('');
+      setEvidenceType('RECEIPT');
+      showSuccess(`Evidence file "${uploadedName}" uploaded successfully.`);
       await fetchDisputeDetails();
     } catch (err) {
-      setError(err.message || 'Failed to upload evidence');
+      showError(err.message || 'Evidence upload failed. Please try again.');
+    } finally {
+      setUploadingEvidence(false);
     }
   };
 
   const handleSubmitOffer = async (e) => {
     e.preventDefault();
-    setError('');
+    const amt = parseFloat(offerAmount);
+    if (isNaN(amt) || amt < 0) {
+      showError('Please enter a valid offer deduction amount.');
+      return;
+    }
+
     try {
       await api.landlord.submitOffer(id, {
-        amount: parseFloat(offerAmount),
+        amount: amt,
         message: offerMessage,
       });
       setOfferAmount('');
       setOfferMessage('');
-      setSuccess('Offer submitted successfully!');
+      showSuccess('Offer submitted successfully.');
       await fetchDisputeDetails();
     } catch (err) {
-      setError(err.message || 'Failed to submit offer');
+      showError(err.message || 'Failed to submit offer');
     }
+  };
+
+  const getEvidenceTypeLabel = (typeKey) => {
+    const found = EVIDENCE_TYPES.find((t) => t.value === typeKey);
+    return found ? found.label : typeKey;
   };
 
   if (loading) {
@@ -141,7 +256,7 @@ export const LandlordDisputeDetail = () => {
       <div className="max-w-7xl mx-auto px-4 py-12 text-center space-y-4">
         <AlertCircle className="w-10 h-10 text-[#DC2626] mx-auto" />
         <h2 className="text-lg font-bold text-[#111111]">Dispute Not Found</h2>
-        <p className="text-xs text-[#737373]">{error || 'The requested case could not be retrieved.'}</p>
+        <p className="text-xs text-[#737373]">The requested case could not be retrieved.</p>
         <Link to="/landlord" className="inline-block text-xs font-bold text-[#B68400]">
           Return to Dashboard
         </Link>
@@ -179,20 +294,6 @@ export const LandlordDisputeDetail = () => {
           </button>
         </div>
       </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-[#DC2626] text-xs p-4 rounded-xl flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {success && (
-        <div className="bg-green-50 border border-green-200 text-[#1B8E13] text-xs p-4 rounded-xl flex items-center space-x-2">
-          <CheckCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{success}</span>
-        </div>
-      )}
 
       {/* Case Overview Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -256,8 +357,10 @@ export const LandlordDisputeDetail = () => {
                 <select
                   value={newClaim.category}
                   onChange={(e) => setNewClaim({ ...newClaim, category: e.target.value })}
-                  className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs"
+                  className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs bg-white text-[#111111]"
+                  required
                 >
+                  <option value="" disabled>Select category...</option>
                   <option value="PAINTING">PAINTING</option>
                   <option value="FIXTURE">FIXTURE</option>
                   <option value="UTILITIES">UTILITIES</option>
@@ -272,8 +375,8 @@ export const LandlordDisputeDetail = () => {
                   required
                   value={newClaim.description}
                   onChange={(e) => setNewClaim({ ...newClaim, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs"
-                  placeholder="e.g. Wall painting charges"
+                  className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs bg-white text-[#111111]"
+                  placeholder="e.g. Bedroom wall repainting charges"
                 />
               </div>
               <div>
@@ -283,8 +386,8 @@ export const LandlordDisputeDetail = () => {
                   required
                   value={newClaim.claimedAmount}
                   onChange={(e) => setNewClaim({ ...newClaim, claimedAmount: e.target.value })}
-                  className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs"
-                  placeholder="18000"
+                  className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs bg-white text-[#111111]"
+                  placeholder="e.g. 18000"
                 />
               </div>
             </div>
@@ -298,7 +401,7 @@ export const LandlordDisputeDetail = () => {
               </button>
               <button
                 type="submit"
-                className="px-4 py-1.5 text-xs font-bold text-white bg-[#B68400] hover:bg-[#966d00] rounded-xl"
+                className="px-4 py-1.5 text-xs font-bold text-white bg-[#B68400] hover:bg-[#966d00] rounded-xl shadow-sm"
               >
                 Save Claim
               </button>
@@ -306,11 +409,11 @@ export const LandlordDisputeDetail = () => {
           </form>
         )}
 
-        {/* Claims List Table */}
+        {/* Claims List */}
         <div className="divide-y divide-[#E5E5E5]">
           {dispute.claims && dispute.claims.length > 0 ? (
             dispute.claims.map((c) => (
-              <div key={c.id} className="p-6 space-y-3">
+              <div key={c.id} className="p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <span className="text-xs font-extrabold uppercase text-[#B68400] tracking-wider block">
@@ -318,11 +421,21 @@ export const LandlordDisputeDetail = () => {
                     </span>
                     <p className="text-sm font-semibold text-[#111111] mt-0.5">{c.description}</p>
                   </div>
-                  <div className="text-right">
-                    <span className="text-xs text-[#737373] block">Claimed: {formatINR(c.claimedAmount)}</span>
-                    {c.approvedAmount !== null && (
-                      <span className="text-sm font-bold text-[#1B8E13] block">Approved: {formatINR(c.approvedAmount)}</span>
-                    )}
+                  <div className="flex items-center space-x-3">
+                    <div className="text-right">
+                      <span className="text-xs text-[#737373] block">Claimed: {formatINR(c.claimedAmount)}</span>
+                      {c.approvedAmount !== null && c.approvedAmount !== undefined && (
+                        <span className="text-sm font-bold text-[#1B8E13] block">Engine Approved: {formatINR(c.approvedAmount)}</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleDeleteClaim(c.id)}
+                      disabled={deletingClaimId === c.id}
+                      className="p-2 text-[#737373] hover:text-[#DC2626] hover:bg-red-50 rounded-xl transition-colors disabled:opacity-50"
+                      title="Delete claim item"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -332,63 +445,130 @@ export const LandlordDisputeDetail = () => {
                   </div>
                 )}
 
-                {/* Evidence Attachments */}
-                <div className="pt-2 flex items-center justify-between">
-                  <div className="text-xs text-[#737373]">
-                    Supporting Evidence: <strong>{c.evidence?.length || 0} file(s) attached</strong>
+                {/* Evidence Attachments Header */}
+                <div className="pt-2 border-t border-[#E5E5E5]/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="text-xs font-bold text-[#111111] flex items-center space-x-1.5">
+                    <Paperclip className="w-3.5 h-3.5 text-[#505423]" />
+                    <span>Supporting Evidence: <strong>{c.evidence?.length || 0} file(s) attached</strong></span>
                   </div>
                   <button
-                    onClick={() => setSelectedClaimId(c.id)}
+                    onClick={() => {
+                      setSelectedClaimId(c.id);
+                      setEvidenceError('');
+                      setSelectedFile(null);
+                      setEvidenceDescription('');
+                      setEvidenceType('RECEIPT');
+                    }}
                     className="inline-flex items-center space-x-1 text-xs font-bold text-[#505423] hover:text-[#B68400]"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Upload Evidence</span>
+                    <span>Attach Evidence File</span>
                   </button>
                 </div>
 
-                {/* Evidence Modal Inline */}
+                {/* List Attached Evidence Files */}
+                {c.evidence && c.evidence.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    {c.evidence.map((ev) => (
+                      <div key={ev.id} className="bg-[#F7F7F5] border border-[#E5E5E5] p-3 rounded-xl flex items-center justify-between text-xs shadow-2xs">
+                        <div className="space-y-0.5 truncate pr-2">
+                          <span className="text-[10px] font-extrabold uppercase text-[#B68400] block">
+                            {getEvidenceTypeLabel(ev.type)}
+                          </span>
+                          <span className="font-semibold text-[#111111] block truncate">
+                            {ev.description || 'Evidence Document'}
+                          </span>
+                        </div>
+                        {ev.fileUrl && (
+                          <a
+                            href={ev.fileUrl.startsWith('http') ? ev.fileUrl : `http://localhost:4000${ev.fileUrl}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center space-x-1 text-[11px] font-bold text-[#505423] hover:text-[#B68400] bg-white border border-[#E5E5E5] px-2.5 py-1 rounded-lg shadow-2xs flex-shrink-0"
+                          >
+                            <span>View</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Evidence Upload Form Modal / Inline */}
                 {selectedClaimId === c.id && (
-                  <form onSubmit={handleAddEvidence} className="bg-white p-4 rounded-xl border border-[#B68400] space-y-3 mt-2">
-                    <h4 className="text-xs font-bold text-[#111111]">Attach Evidence URL for {c.category}</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <form onSubmit={handleAddEvidence} className="bg-white p-4 rounded-2xl border border-[#B68400] space-y-3 mt-3 shadow-sm">
+                    <h4 className="text-xs font-bold text-[#111111] uppercase tracking-wider">
+                      Attach Evidence File for {c.category} ({c.description})
+                    </h4>
+
+                    {evidenceError && (
+                      <div className="bg-red-50 border border-red-200 text-[#DC2626] text-xs p-2.5 rounded-lg flex items-center space-x-2">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        <span>{evidenceError}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-[10px] font-semibold text-[#737373]">Type</label>
+                        <label className="block text-[10px] font-semibold text-[#737373] uppercase mb-1">Evidence Type</label>
                         <select
-                          value={newEvidence.type}
-                          onChange={(e) => setNewEvidence({ ...newEvidence, type: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border rounded-lg text-xs"
+                          value={evidenceType}
+                          onChange={(e) => setEvidenceType(e.target.value)}
+                          className="w-full px-2.5 py-2 border border-[#E5E5E5] rounded-xl text-xs text-[#111111] bg-white"
                         >
-                          <option value="RECEIPT">RECEIPT</option>
-                          <option value="INVOICE">INVOICE</option>
-                          <option value="PHOTO">PHOTO</option>
-                          <option value="AGREEMENT">AGREEMENT</option>
+                          {EVIDENCE_TYPES.map((t) => (
+                            <option key={t.value} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
+
                       <div>
-                        <label className="block text-[10px] font-semibold text-[#737373]">Evidence File URL</label>
+                        <label className="block text-[10px] font-semibold text-[#737373] uppercase mb-1">Evidence File (PDF, JPG, PNG)</label>
                         <input
-                          type="url"
+                          type="file"
                           required
-                          value={newEvidence.fileUrl}
-                          onChange={(e) => setNewEvidence({ ...newEvidence, fileUrl: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border rounded-lg text-xs"
-                          placeholder="https://gharpay.in/receipt.pdf"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={handleFileChange}
+                          className="w-full text-xs text-[#737373] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#B68400]/15 file:text-[#B68400] cursor-pointer"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-semibold text-[#737373] uppercase mb-1">Description (Optional)</label>
+                        <input
+                          type="text"
+                          value={evidenceDescription}
+                          onChange={(e) => setEvidenceDescription(e.target.value)}
+                          className="w-full px-2.5 py-2 border border-[#E5E5E5] rounded-xl text-xs text-[#111111]"
+                          placeholder="e.g. Repair receipt"
                         />
                       </div>
                     </div>
-                    <div className="flex justify-end space-x-2">
+
+                    {selectedFile && (
+                      <div className="text-xs font-semibold text-[#1B8E13] flex items-center space-x-1 pt-1">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span>Selected file: <strong>{selectedFile.name}</strong> ({(selectedFile.size / 1024).toFixed(1)} KB)</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end space-x-2 pt-1">
                       <button
                         type="button"
                         onClick={() => setSelectedClaimId(null)}
-                        className="px-3 py-1 text-xs text-[#737373]"
+                        className="px-3 py-1.5 text-xs text-[#737373] hover:text-[#111111]"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="px-3 py-1 text-xs font-bold text-white bg-[#505423] rounded-lg"
+                        disabled={uploadingEvidence}
+                        className="px-4 py-1.5 text-xs font-bold text-white bg-[#505423] hover:bg-[#3f421b] rounded-xl shadow-sm disabled:opacity-50"
                       >
-                        Upload
+                        {uploadingEvidence ? 'Uploading...' : 'Upload & Attach'}
                       </button>
                     </div>
                   </form>
@@ -438,7 +618,7 @@ export const LandlordDisputeDetail = () => {
                   value={offerAmount}
                   onChange={(e) => setOfferAmount(e.target.value)}
                   className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs text-[#111111]"
-                  placeholder="27000"
+                  placeholder="Enter offered amount (e.g. 27000)"
                 />
               </div>
               <div>
@@ -448,7 +628,7 @@ export const LandlordDisputeDetail = () => {
                   value={offerMessage}
                   onChange={(e) => setOfferMessage(e.target.value)}
                   className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs text-[#111111]"
-                  placeholder="I can reduce the deduction to ₹27,000"
+                  placeholder="e.g. I can agree to ₹27,000 as the final deduction"
                 />
               </div>
             </div>
@@ -466,4 +646,3 @@ export const LandlordDisputeDetail = () => {
 };
 
 export default LandlordDisputeDetail;
-

@@ -1,26 +1,27 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import { Shield, Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
 
 export const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const { login } = useAuth();
+  const { showError, showSuccess } = useNotification();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sessionExpired = searchParams.get('expired') === 'true';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
     setSubmitting(true);
 
     try {
       const loggedUser = await login(email, password);
+      showSuccess(`Welcome back, ${loggedUser.name}!`);
       if (loggedUser.role === 'LANDLORD') {
         navigate('/landlord');
       } else if (loggedUser.role === 'TENANT') {
@@ -31,7 +32,7 @@ export const Login = () => {
         navigate('/');
       }
     } catch (err) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      showError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setSubmitting(false);
     }
@@ -40,11 +41,11 @@ export const Login = () => {
   const handleDemoLogin = async (demoEmail, demoPassword = 'password123') => {
     setEmail(demoEmail);
     setPassword(demoPassword);
-    setError('');
     setSubmitting(true);
 
     try {
       const loggedUser = await login(demoEmail, demoPassword);
+      showSuccess(`Signed in as demo ${loggedUser.role.toLowerCase()}: ${loggedUser.name}`);
       if (loggedUser.role === 'LANDLORD') {
         navigate('/landlord');
       } else if (loggedUser.role === 'TENANT') {
@@ -53,7 +54,7 @@ export const Login = () => {
         navigate('/mediator');
       }
     } catch (err) {
-      setError(err.message || 'Demo login failed.');
+      showError(err.message || 'Demo login failed.');
     } finally {
       setSubmitting(false);
     }
@@ -78,13 +79,6 @@ export const Login = () => {
           <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3 rounded-lg flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <span>Your session has expired. Please sign in again.</span>
-          </div>
-        )}
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-[#DC2626] text-xs p-3 rounded-lg flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{error}</span>
           </div>
         )}
 

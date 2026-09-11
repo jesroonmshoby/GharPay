@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../../services/api';
+import { useNotification } from '../../context/NotificationContext';
 import { formatINR, formatDate } from '../../utils/formatters';
 import {
   Scale,
@@ -16,11 +17,10 @@ import {
 
 export const MediatorCaseDetail = () => {
   const { id } = useParams();
+  const { showSuccess, showError } = useNotification();
   const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Recommendation State
   const [recommendationNote, setRecommendationNote] = useState('');
@@ -34,12 +34,11 @@ export const MediatorCaseDetail = () => {
 
   const fetchCaseDetails = async () => {
     setLoading(true);
-    setError('');
     try {
       const res = await api.mediator.getCase(id);
       setCaseData(res.caseDetails);
     } catch (err) {
-      setError(err.message || 'Failed to load mediator case details');
+      showError(err.message || 'Failed to load mediator case details');
     } finally {
       setLoading(false);
     }
@@ -47,14 +46,12 @@ export const MediatorCaseDetail = () => {
 
   const handleLogReview = async () => {
     setSubmitting(true);
-    setError('');
-    setSuccess('');
     try {
       await api.mediator.reviewCase(id);
-      setSuccess('Case review action logged in Audit Log!');
+      showSuccess('Case review action logged successfully.');
       await fetchCaseDetails();
     } catch (err) {
-      setError(err.message || 'Failed to log review');
+      showError(err.message || 'Failed to log review');
     } finally {
       setSubmitting(false);
     }
@@ -62,17 +59,15 @@ export const MediatorCaseDetail = () => {
 
   const handleRecommendation = async (recommendationType) => {
     setSubmitting(true);
-    setError('');
-    setSuccess('');
     try {
       await api.mediator.submitRecommendation(id, {
         recommendation: recommendationType,
         note: recommendationNote,
       });
-      setSuccess(`Recommendation ${recommendationType} recorded!`);
+      showSuccess(`Recommendation ${recommendationType} recorded.`);
       await fetchCaseDetails();
     } catch (err) {
-      setError(err.message || 'Failed to submit recommendation');
+      showError(err.message || 'Failed to submit recommendation');
     } finally {
       setSubmitting(false);
     }
@@ -81,16 +76,14 @@ export const MediatorCaseDetail = () => {
   const handleCreateSettlement = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    setError('');
-    setSuccess('');
     try {
       const res = await api.settlement.createSettlement(id, {
         agreedDeduction: parseFloat(agreedDeduction),
       });
-      setSuccess(`Settlement created! Agreed Deduction: ${formatINR(res.settlement.agreedDeduction)}, Refund: ${formatINR(res.settlement.refundAmount)}.`);
+      showSuccess(`Settlement created successfully.`);
       await fetchCaseDetails();
     } catch (err) {
-      setError(err.message || 'Failed to create settlement');
+      showError(err.message || 'Failed to create settlement');
     } finally {
       setSubmitting(false);
     }
@@ -109,7 +102,7 @@ export const MediatorCaseDetail = () => {
       <div className="max-w-7xl mx-auto px-4 py-12 text-center space-y-4">
         <AlertCircle className="w-10 h-10 text-[#DC2626] mx-auto" />
         <h2 className="text-lg font-bold text-[#111111]">Case Not Found</h2>
-        <p className="text-xs text-[#737373]">{error || 'The requested case could not be retrieved.'}</p>
+        <p className="text-xs text-[#737373]">The requested case could not be retrieved.</p>
         <Link to="/mediator" className="inline-block text-xs font-bold text-[#505423]">
           Return to Dashboard
         </Link>
@@ -148,20 +141,6 @@ export const MediatorCaseDetail = () => {
           </button>
         </div>
       </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-[#DC2626] text-xs p-4 rounded-xl flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {success && (
-        <div className="bg-green-50 border border-green-200 text-[#1B8E13] text-xs p-4 rounded-xl flex items-center space-x-2">
-          <CheckCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{success}</span>
-        </div>
-      )}
 
       {/* Case Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -306,8 +285,36 @@ export const MediatorCaseDetail = () => {
                   {c.calculationExplanation}
                 </p>
               )}
+              {c.evidence && c.evidence.length > 0 && (
+                <div className="pt-2 border-t border-[#E5E5E5]/60 space-y-1">
+                  <span className="text-xs font-bold text-[#111111] block">
+                    Attached Evidence ({c.evidence.length}):
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {c.evidence.map((ev) => (
+                      <div key={ev.id} className="bg-[#F7F7F5] border border-[#E5E5E5] p-2 rounded-lg flex items-center justify-between text-xs">
+                        <div className="truncate pr-2">
+                          <span className="text-[9px] font-bold uppercase text-[#505423] block">{ev.type}</span>
+                          <span className="font-medium text-[#111111] block truncate">{ev.description || 'Evidence Document'}</span>
+                        </div>
+                        {ev.fileUrl && (
+                          <a
+                            href={ev.fileUrl.startsWith('http') ? ev.fileUrl : `http://localhost:4000${ev.fileUrl}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] font-bold text-[#B68400] hover:underline bg-white border border-[#E5E5E5] px-2 py-0.5 rounded flex-shrink-0"
+                          >
+                            View
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
+
         </div>
       </div>
     </div>
