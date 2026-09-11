@@ -6,13 +6,25 @@ import { config } from '../config/env';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedRequest } from '../middleware/auth';
 
-export const registerLandlord = async (
+/**
+ * Validates email format basic regex
+ */
+const isValidEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+/**
+ * POST /api/auth/register
+ * Handles self-registration for TENANT or LANDLORD roles
+ */
+export const register = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, phone, password, role } = req.body;
 
     if (!name || !email || !password || !role) {
       res.status(400).json({
@@ -25,12 +37,36 @@ export const registerLandlord = async (
       return;
     }
 
-    if (role !== UserRole.LANDLORD) {
+    if (!isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_EMAIL',
+          message: 'A valid email address is required',
+        },
+      });
+      return;
+    }
+
+    if (password.length < 8) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_PASSWORD',
+          message: 'Password must be at least 8 characters long',
+        },
+      });
+      return;
+    }
+
+    const targetRole = String(role).toUpperCase() as UserRole;
+
+    if (targetRole !== UserRole.TENANT && targetRole !== UserRole.LANDLORD) {
       res.status(400).json({
         success: false,
         error: {
           code: 'INVALID_ROLE',
-          message: 'Only LANDLORD registration is permitted on this endpoint',
+          message: 'Self-registration is only permitted for TENANT or LANDLORD roles',
         },
       });
       return;
@@ -58,8 +94,9 @@ export const registerLandlord = async (
       data: {
         name,
         email: email.toLowerCase(),
+        phone: phone || null,
         passwordHash,
-        role: UserRole.LANDLORD,
+        role: targetRole,
       },
       select: {
         id: true,
@@ -84,74 +121,11 @@ export const registerLandlord = async (
   }
 };
 
-export const registerTenant = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_INPUT',
-          message: 'name, email, and password are required',
-        },
-      });
-      return;
-    }
-
-    const existingUser = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-
-    if (existingUser) {
-      res.status(409).json({
-        success: false,
-        error: {
-          code: 'DUPLICATE_EMAIL',
-          message: 'An account with this email address already exists',
-        },
-      });
-      return;
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email: email.toLowerCase(),
-        passwordHash,
-        role: UserRole.TENANT,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-      },
-    });
-
-    res.status(201).json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const loginLandlord = async (
+/**
+ * POST /api/auth/login
+ * Handles user authentication for both TENANT and LANDLORD roles
+ */
+export const login = async (
   req: Request,
   res: Response,
   next: NextFunction
@@ -180,17 +154,6 @@ export const loginLandlord = async (
         error: {
           code: 'INVALID_CREDENTIALS',
           message: 'Invalid email or password',
-        },
-      });
-      return;
-    }
-
-    if (user.role !== UserRole.LANDLORD) {
-      res.status(401).json({
-        success: false,
-        error: {
-          code: 'INVALID_ROLE',
-          message: 'Access restricted to LANDLORD role',
         },
       });
       return;
@@ -229,6 +192,15 @@ export const loginLandlord = async (
   }
 };
 
+// Aliases for backwards compatibility
+export const registerLandlord = register;
+export const registerTenant = register;
+export const loginLandlord = login;
+
+/**
+ * GET /api/auth/me
+ * Returns profile for authenticated user
+ */
 export const getCurrentUser = async (
   req: AuthenticatedRequest,
   res: Response,
