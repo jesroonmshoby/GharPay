@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { formatINR, formatDate } from '../../utils/formatters';
-import { PlusCircle, Home, FileText, ArrowRight, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { useNotification } from '../../context/NotificationContext';
+import { formatINR } from '../../utils/formatters';
+import { PlusCircle, Home, FileText, ArrowRight } from 'lucide-react';
+
+const NON_ACTIVE_STATUSES = ['SETTLED', 'REJECTED'];
 
 export const LandlordDashboard = () => {
+  const { showError } = useNotification();
   const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -16,18 +19,16 @@ export const LandlordDashboard = () => {
 
   const fetchDisputes = async () => {
     setLoading(true);
-    setError('');
     try {
-      // For landlord, we fetch disputes by attempting to view demo case or listing
-      // In demo mode, we fetch GP-2026-0042 if available
-      const data = await api.landlord.getDispute('GP-2026-0042').catch(() => null);
-      if (data && data.dispute) {
-        setDisputes([data.dispute]);
+      const res = await api.landlord.getDisputes();
+      if (res && Array.isArray(res.disputes)) {
+        setDisputes(res.disputes);
       } else {
         setDisputes([]);
       }
     } catch (err) {
       console.error('Error fetching landlord disputes:', err);
+      showError(err.message || 'Unable to load disputes. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -35,6 +36,12 @@ export const LandlordDashboard = () => {
 
   const getStatusBadge = (status) => {
     switch (status) {
+      case 'DRAFT':
+        return <span className="bg-gray-100 text-gray-700 border border-gray-200 px-2.5 py-1 rounded-full text-xs font-bold">Draft</span>;
+      case 'SUBMITTED':
+        return <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full text-xs font-bold">Submitted</span>;
+      case 'EVIDENCE_REVIEW':
+        return <span className="bg-cyan-50 text-cyan-700 border border-cyan-200 px-2.5 py-1 rounded-full text-xs font-bold">Evidence Review</span>;
       case 'CALCULATED':
         return <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-1 rounded-full text-xs font-bold">Calculated</span>;
       case 'TENANT_REVIEW':
@@ -42,15 +49,21 @@ export const LandlordDashboard = () => {
       case 'NEGOTIATION':
         return <span className="bg-[#B68400]/15 text-[#B68400] border border-[#B68400]/30 px-2.5 py-1 rounded-full text-xs font-bold">In Negotiation</span>;
       case 'MEDIATOR_REVIEW':
-        return <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full text-xs font-bold">Mediator Review</span>;
+        return <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-full text-xs font-bold">Mediator Review</span>;
       case 'SETTLEMENT_PENDING':
         return <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-xs font-bold">Settlement Pending</span>;
       case 'SETTLED':
         return <span className="bg-[#1B8E13]/15 text-[#1B8E13] border border-[#1B8E13]/30 px-2.5 py-1 rounded-full text-xs font-bold">✓ Settled</span>;
+      case 'REJECTED':
+        return <span className="bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-full text-xs font-bold">Rejected</span>;
       default:
         return <span className="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-full text-xs font-bold">{status}</span>;
     }
   };
+
+  const activeDisputes = disputes.filter((d) => !NON_ACTIVE_STATUSES.includes(d.status));
+  const activeDisputesCount = activeDisputes.length;
+  const latestDispute = disputes.length > 0 ? disputes[0] : null;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -80,25 +93,29 @@ export const LandlordDashboard = () => {
             Active Disputes
           </span>
           <span className="text-2xl font-extrabold text-[#111111] mt-2 block">
-            {disputes.length}
+            {activeDisputesCount}
           </span>
         </div>
+
         <div className="bg-white p-5 rounded-2xl border border-[#E5E5E5] shadow-sm">
           <span className="text-xs font-semibold text-[#737373] uppercase tracking-wider block">
-            Demo Case
+            {activeDisputesCount > 0 ? 'Active Case' : 'Latest Case'}
           </span>
           <span className="text-xl font-bold text-[#B68400] mt-2 block">
-            GP-2026-0042
+            {latestDispute ? latestDispute.caseNumber : 'None'}
           </span>
         </div>
+
         <div className="bg-white p-5 rounded-2xl border border-[#E5E5E5] shadow-sm">
           <span className="text-xs font-semibold text-[#737373] uppercase tracking-wider block">
             Calculated Deduction
           </span>
           <span className="text-2xl font-extrabold text-[#1B8E13] mt-2 block">
-            {disputes.length > 0 && disputes[0].calculatedDeduction
-              ? formatINR(disputes[0].calculatedDeduction)
-              : '₹28,500'}
+            {latestDispute && latestDispute.calculatedDeduction
+              ? formatINR(latestDispute.calculatedDeduction)
+              : latestDispute
+              ? 'Not calculated'
+              : 'N/A'}
           </span>
         </div>
       </div>
@@ -114,13 +131,13 @@ export const LandlordDashboard = () => {
 
         {loading ? (
           <div className="p-8 text-center text-xs text-[#737373]">
-            Loading dispute information from backend...
+            Loading disputes...
           </div>
         ) : disputes.length === 0 ? (
           <div className="p-12 text-center space-y-3">
             <Home className="w-10 h-10 text-[#737373] mx-auto opacity-40" />
             <p className="text-sm font-semibold text-[#111111]">
-              No active disputes registered yet
+              No disputes yet
             </p>
             <p className="text-xs text-[#737373]">
               Start by creating a property, tenancy agreement, and dispute claim.

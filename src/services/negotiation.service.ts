@@ -55,6 +55,71 @@ export interface FormattedDispute {
 }
 
 /**
+ * Fetches all disputes for an authenticated landlord
+ */
+export const getLandlordDisputes = async (landlordId: string) => {
+  const disputes = await prisma.dispute.findMany({
+    where: {
+      tenancy: {
+        landlordId,
+      },
+    },
+    include: {
+      tenancy: {
+        include: {
+          property: true,
+          tenant: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      },
+      claims: {
+        include: {
+          evidence: true,
+        },
+      },
+      offers: {
+        orderBy: { createdAt: 'desc' },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return disputes.map((d) => ({
+    id: d.id,
+    caseNumber: d.caseNumber,
+    status: d.status,
+    totalDeposit: formatDecimal(d.totalDeposit)!,
+    claimedDeduction: formatDecimal(d.claimedDeduction)!,
+    calculatedDeduction: formatDecimal(d.calculatedDeduction),
+    currentRound: d.currentRound,
+    settlementEligible: d.settlementEligible,
+    tenantOffer: formatDecimal(d.tenantOffer),
+    landlordOffer: formatDecimal(d.landlordOffer),
+    property: d.tenancy.property,
+    tenancy: {
+      id: d.tenancy.id,
+      startDate: d.tenancy.startDate.toISOString(),
+      endDate: d.tenancy.endDate ? d.tenancy.endDate.toISOString() : null,
+      monthlyRent: formatDecimal(d.tenancy.monthlyRent)!,
+      securityDeposit: formatDecimal(d.tenancy.securityDeposit)!,
+      tenant: d.tenancy.tenant,
+    },
+    claims: d.claims.map((c) => ({
+      id: c.id,
+      category: c.category,
+      description: c.description,
+      claimedAmount: formatDecimal(c.claimedAmount),
+      approvedAmount: formatDecimal(c.approvedAmount),
+      status: c.status,
+      calculationExplanation: c.calculationExplanation,
+      evidence: c.evidence,
+    })),
+    offers: d.offers,
+  }));
+};
+
+/**
  * Fetches all disputes for an authenticated tenant
  */
 export const getTenantDisputes = async (tenantId: string) => {

@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../../services/api';
+import { useNotification } from '../../context/NotificationContext';
 import { formatINR, formatDate } from '../../utils/formatters';
 import { Award, Download, CheckCircle, Clock, AlertCircle, FileCheck, Shield } from 'lucide-react';
 
 export const SettlementView = () => {
   const { id } = useParams();
+  const { showSuccess, showError } = useNotification();
   const [settlement, setSettlement] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchSettlement();
@@ -16,12 +17,11 @@ export const SettlementView = () => {
 
   const fetchSettlement = async () => {
     setLoading(true);
-    setError('');
     try {
       const res = await api.settlement.getSettlement(id);
       setSettlement(res.settlement);
     } catch (err) {
-      setError(err.message || 'Failed to load settlement details');
+      showError(err.message || 'Failed to load settlement details');
     } finally {
       setLoading(false);
     }
@@ -38,8 +38,9 @@ export const SettlementView = () => {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      showSuccess('PDF downloaded successfully.');
     } catch (err) {
-      setError(err.message || 'Failed to download PDF document');
+      showError(err.message || 'Failed to download PDF document');
     }
   };
 
@@ -56,7 +57,7 @@ export const SettlementView = () => {
       <div className="max-w-4xl mx-auto px-4 py-12 text-center space-y-4">
         <AlertCircle className="w-10 h-10 text-[#DC2626] mx-auto" />
         <h2 className="text-lg font-bold text-[#111111]">Settlement Document Not Found</h2>
-        <p className="text-xs text-[#737373]">{error || 'The requested settlement record could not be retrieved.'}</p>
+        <p className="text-xs text-[#737373]">The requested settlement record could not be retrieved.</p>
         <Link to="/" className="inline-block text-xs font-bold text-[#B68400]">
           Return to Home
         </Link>
@@ -78,13 +79,6 @@ export const SettlementView = () => {
           Case Number: <strong className="text-[#111111]">{settlement.caseNumber}</strong> | Status: <strong className="text-[#1B8E13]">{settlement.disputeStatus}</strong>
         </p>
       </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-[#DC2626] text-xs p-4 rounded-xl flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
 
       {/* Financial Breakdown */}
       <div className="bg-white p-6 rounded-2xl border border-[#E5E5E5] shadow-sm space-y-6">

@@ -1,50 +1,51 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { Home, Calendar, DollarSign, FileText, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
+import { useNotification } from '../../context/NotificationContext';
+import { Home, Calendar, DollarSign, FileText, ArrowRight } from 'lucide-react';
 
 export const LandlordIntake = () => {
   const navigate = useNavigate();
+  const { showSuccess, showError } = useNotification();
 
   // Form steps: 1=Property, 2=Tenancy, 3=Dispute
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
   // Property State
   const [propertyData, setPropertyData] = useState({
-    addressLine1: 'Whitefield Main Rd, Building 4',
-    city: 'Bengaluru',
-    state: 'Karnataka',
-    postalCode: '560066',
+    addressLine1: '',
+    city: '',
+    state: '',
+    postalCode: '',
   });
   const [createdPropertyId, setCreatedPropertyId] = useState('');
 
   // Tenancy State
   const [tenancyData, setTenancyData] = useState({
-    tenantId: '',
-    startDate: '2025-01-01',
-    endDate: '2025-12-31',
-    monthlyRent: '40000',
-    securityDeposit: '200000',
+    tenantEmail: '',
+    startDate: '',
+    endDate: '',
+    monthlyRent: '',
+    securityDeposit: '',
   });
   const [createdTenancyId, setCreatedTenancyId] = useState('');
 
   // Dispute State
-  const [claimedDeduction, setClaimedDeduction] = useState('42000');
+  const [claimedDeduction, setClaimedDeduction] = useState('');
 
   // Handle Step 1: Create Property
   const handleCreateProperty = async (e) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
 
     try {
       const res = await api.landlord.createProperty(propertyData);
       setCreatedPropertyId(res.property.id);
+      showSuccess('Property registered successfully.');
       setStep(2);
     } catch (err) {
-      setError(err.message || 'Failed to create property');
+      showError(err.message || 'Failed to create property');
     } finally {
       setLoading(false);
     }
@@ -53,31 +54,31 @@ export const LandlordIntake = () => {
   // Handle Step 2: Create Tenancy
   const handleCreateTenancy = async (e) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
 
     try {
       const res = await api.landlord.createTenancy({
         propertyId: createdPropertyId,
-        tenantId: tenancyData.tenantId,
+        tenantEmail: tenancyData.tenantEmail,
         startDate: tenancyData.startDate,
-        endDate: tenancyData.endDate,
+        endDate: tenancyData.endDate ? tenancyData.endDate : undefined,
         monthlyRent: parseFloat(tenancyData.monthlyRent),
         securityDeposit: parseFloat(tenancyData.securityDeposit),
       });
       setCreatedTenancyId(res.tenancy.id);
+      showSuccess('Tenancy agreement created successfully.');
       setStep(3);
     } catch (err) {
-      setError(err.message || 'Failed to create tenancy agreement');
+      showError(err.message || 'Failed to create tenancy agreement');
     } finally {
       setLoading(false);
     }
   };
 
+
   // Handle Step 3: Create Dispute
   const handleCreateDispute = async (e) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
 
     try {
@@ -85,9 +86,10 @@ export const LandlordIntake = () => {
         tenancyId: createdTenancyId,
         claimedDeduction: parseFloat(claimedDeduction),
       });
+      showSuccess('Dispute created successfully.');
       navigate(`/landlord/dispute/${res.dispute.id}`);
     } catch (err) {
-      setError(err.message || 'Failed to create dispute');
+      showError(err.message || 'Failed to create dispute');
     } finally {
       setLoading(false);
     }
@@ -124,13 +126,6 @@ export const LandlordIntake = () => {
         />
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-[#DC2626] text-xs p-4 rounded-xl flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
       {/* STEP 1: PROPERTY FORM */}
       {step === 1 && (
         <form onSubmit={handleCreateProperty} className="bg-white p-6 rounded-2xl border border-[#E5E5E5] space-y-4 shadow-sm">
@@ -149,6 +144,7 @@ export const LandlordIntake = () => {
               value={propertyData.addressLine1}
               onChange={(e) => setPropertyData({ ...propertyData, addressLine1: e.target.value })}
               className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-sm text-[#111111] focus:ring-2 focus:ring-[#B68400] focus:outline-none"
+              placeholder="e.g. Flat 402, Sunshine Apartments"
             />
           </div>
 
@@ -161,6 +157,7 @@ export const LandlordIntake = () => {
                 value={propertyData.city}
                 onChange={(e) => setPropertyData({ ...propertyData, city: e.target.value })}
                 className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-sm text-[#111111] focus:ring-2 focus:ring-[#B68400] focus:outline-none"
+                placeholder="e.g. Bengaluru"
               />
             </div>
             <div>
@@ -171,6 +168,7 @@ export const LandlordIntake = () => {
                 value={propertyData.state}
                 onChange={(e) => setPropertyData({ ...propertyData, state: e.target.value })}
                 className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-sm text-[#111111] focus:ring-2 focus:ring-[#B68400] focus:outline-none"
+                placeholder="e.g. Karnataka"
               />
             </div>
           </div>
@@ -196,19 +194,41 @@ export const LandlordIntake = () => {
 
           <div>
             <label className="block text-xs font-semibold text-[#111111] mb-1">
-              Tenant User ID
+              Tenant Email
             </label>
             <input
-              type="text"
+              type="email"
               required
-              value={tenancyData.tenantId}
-              onChange={(e) => setTenancyData({ ...tenancyData, tenantId: e.target.value })}
+              value={tenancyData.tenantEmail}
+              onChange={(e) => setTenancyData({ ...tenancyData, tenantEmail: e.target.value })}
               className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-sm text-[#111111] focus:ring-2 focus:ring-[#B68400] focus:outline-none"
-              placeholder="UUID of tenant user account"
+              placeholder="tenant@example.com"
             />
             <p className="text-[10px] text-[#737373] mt-1">
-              Tip: Enter the tenant's user ID from their registered account.
+              Enter the email address used by the tenant to create their GharPay account.
             </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-[#111111] mb-1">Agreement Start Date</label>
+              <input
+                type="date"
+                required
+                value={tenancyData.startDate}
+                onChange={(e) => setTenancyData({ ...tenancyData, startDate: e.target.value })}
+                className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-sm text-[#111111] focus:ring-2 focus:ring-[#B68400] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#111111] mb-1">Agreement End Date</label>
+              <input
+                type="date"
+                value={tenancyData.endDate}
+                onChange={(e) => setTenancyData({ ...tenancyData, endDate: e.target.value })}
+                className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-sm text-[#111111] focus:ring-2 focus:ring-[#B68400] focus:outline-none"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -220,6 +240,7 @@ export const LandlordIntake = () => {
                 value={tenancyData.monthlyRent}
                 onChange={(e) => setTenancyData({ ...tenancyData, monthlyRent: e.target.value })}
                 className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-sm text-[#111111] focus:ring-2 focus:ring-[#B68400] focus:outline-none"
+                placeholder="e.g. 25000"
               />
             </div>
             <div>
@@ -230,6 +251,7 @@ export const LandlordIntake = () => {
                 value={tenancyData.securityDeposit}
                 onChange={(e) => setTenancyData({ ...tenancyData, securityDeposit: e.target.value })}
                 className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-sm text-[#111111] focus:ring-2 focus:ring-[#B68400] focus:outline-none"
+                placeholder="e.g. 100000"
               />
             </div>
           </div>
@@ -263,11 +285,13 @@ export const LandlordIntake = () => {
               value={claimedDeduction}
               onChange={(e) => setClaimedDeduction(e.target.value)}
               className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-sm text-[#111111] focus:ring-2 focus:ring-[#B68400] focus:outline-none"
-              placeholder="42000"
+              placeholder="e.g. 15000"
             />
-            <p className="text-[10px] text-[#737373] mt-1">
-              Cannot exceed security deposit of ₹{tenancyData.securityDeposit}.
-            </p>
+            {tenancyData.securityDeposit && (
+              <p className="text-[10px] text-[#737373] mt-1">
+                Cannot exceed security deposit of ₹{tenancyData.securityDeposit}.
+              </p>
+            )}
           </div>
 
           <button

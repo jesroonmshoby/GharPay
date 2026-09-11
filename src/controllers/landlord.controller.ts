@@ -1,4 +1,7 @@
+import path from 'path';
+import fs from 'fs';
 import { Response, NextFunction } from 'express';
+
 import {
   Prisma,
   DisputeStatus,
@@ -12,6 +15,7 @@ import {
 import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { calculateDispute } from '../services/calculation.service';
+import { getLandlordDisputes } from '../services/negotiation.service';
 
 /**
  * Helper to format Prisma Decimal objects to clean string representations for JSON responses
@@ -54,6 +58,39 @@ const generateCaseNumber = async (): Promise<string> => {
   }
 
   return candidate;
+};
+
+/**
+ * GET /api/landlord/disputes
+ * Fetches all disputes where the authenticated user is the landlord
+ */
+export const getLandlordDisputesHandler = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const landlordId = req.user?.userId;
+    if (!landlordId) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+      });
+      return;
+    }
+
+    const disputes = await getLandlordDisputes(landlordId);
+
+    res.json({
+      success: true,
+      disputes,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 /**
@@ -130,6 +167,7 @@ export const createTenancy = async (
     const {
       propertyId,
       tenantId,
+      tenantEmail,
       startDate,
       endDate,
       monthlyRent,
@@ -137,12 +175,12 @@ export const createTenancy = async (
       agreementUrl,
     } = req.body;
 
-    if (!propertyId || !tenantId || !startDate || monthlyRent === undefined || securityDeposit === undefined) {
+    if (!propertyId || (!tenantEmail && !tenantId) || !startDate || monthlyRent === undefined || securityDeposit === undefined) {
       res.status(400).json({
         success: false,
         error: {
           code: 'INVALID_INPUT',
-          message: 'propertyId, tenantId, startDate, monthlyRent, and securityDeposit are required',
+          message: 'propertyId, tenantEmail, startDate, monthlyRent, and securityDeposit are required',
         },
       });
       return;
@@ -163,30 +201,51 @@ export const createTenancy = async (
       return;
     }
 
-    // 2. Verify tenant exists and has role TENANT
-    const tenant = await prisma.user.findUnique({
-      where: { id: tenantId },
-    });
-    if (!tenant) {
-      res.status(404).json({
-        success: false,
-        error: {
-          code: 'TENANT_NOT_FOUND',
-          message: 'Tenant user not found',
-        },
+    // 2. Resolve & verify tenant by tenantEmail (preferred) or tenantId (UUID fallback)
+    let resolvedTenant;
+    if (tenantEmail) {
+      const normalizedEmail = String(tenantEmail).trim().toLowerCase();
+      resolvedTenant = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
       });
-      return;
+      if (!resolvedTenant) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'TENANT_NOT_FOUND',
+            message: 'No GharPay tenant account was found with this email.',
+          },
+        });
+        return;
+      }
+    } else {
+      resolvedTenant = await prisma.user.findUnique({
+        where: { id: tenantId },
+      });
+      if (!resolvedTenant) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'TENANT_NOT_FOUND',
+            message: 'No GharPay tenant account was found with this ID.',
+          },
+        });
+        return;
+      }
     }
-    if (tenant.role !== UserRole.TENANT) {
+
+    if (resolvedTenant.role !== UserRole.TENANT) {
       res.status(400).json({
         success: false,
         error: {
           code: 'INVALID_TENANT_ROLE',
-          message: 'Specified tenant user does not have TENANT role',
+          message: 'The selected email is not registered as a tenant.',
         },
       });
       return;
     }
+
+    const resolvedTenantId = resolvedTenant.id;
 
     // 3. Verify landlord exists
     const landlord = await prisma.user.findUnique({
@@ -203,6 +262,7 @@ export const createTenancy = async (
       return;
     }
 
+
     const monthlyRentDecimal = new Prisma.Decimal(monthlyRent);
     const securityDepositDecimal = new Prisma.Decimal(securityDeposit);
 
@@ -210,7 +270,7 @@ export const createTenancy = async (
       data: {
         propertyId,
         landlordId,
-        tenantId,
+        tenantId: resolvedTenantId,
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
         monthlyRent: monthlyRentDecimal,
@@ -218,6 +278,7 @@ export const createTenancy = async (
         agreementUrl: agreementUrl || null,
       },
     });
+
 
     res.status(201).json({
       success: true,
@@ -861,4 +922,180 @@ export const calculateDisputeHandler = async (
     next(error);
   }
 };
+
+/**
+ * POST /api/landlord/evidence/upload
+ * Saves an uploaded evidence file (base64) to local storage directory
+ */
+export const uploadEvidenceFileHandler = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+      });
+      return;
+    }
+
+    const { fileName, fileData } = req.body;
+
+    if (!fileName || !fileData) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Please select a file to upload.',
+        },
+      });
+      return;
+    }
+
+    const extMatch = String(fileName).match(/\.([a-zA-Z0-9]+)$/);
+    const ext = extMatch ? extMatch[1].toLowerCase() : '';
+    const allowedExts = ['pdf', 'jpg', 'jpeg', 'png'];
+
+    if (!allowedExts.includes(ext)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_FILE_TYPE',
+          message: 'File type is not supported. Allowed formats: PDF, JPG, JPEG, PNG.',
+        },
+      });
+      return;
+    }
+
+    const base64Content = fileData.includes(';base64,')
+      ? fileData.split(';base64,')[1]
+      : fileData;
+
+    const fileBuffer = Buffer.from(base64Content, 'base64');
+
+    if (fileBuffer.length > 5 * 1024 * 1024) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'FILE_TOO_LARGE',
+          message: 'File is too large. Maximum allowed size is 5MB.',
+        },
+      });
+      return;
+    }
+
+    const safeName = `${Date.now()}-${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const uploadsDir = path.join(process.cwd(), 'storage', 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const filePath = path.join(uploadsDir, safeName);
+    await fs.promises.writeFile(filePath, fileBuffer);
+
+    const relativeUrl = `/api/storage/uploads/${safeName}`;
+
+    res.status(201).json({
+      success: true,
+      fileUrl: relativeUrl,
+      fileName: fileName,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/landlord/claims/:claimId
+ * Deletes a claim item and its associated evidence records for a dispute owned by the landlord
+ */
+export const deleteClaim = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const landlordId = req.user?.userId;
+    const claimId = req.params.claimId as string;
+
+    if (!landlordId) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+      });
+      return;
+    }
+
+    if (!claimId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'claimId URL parameter is required',
+        },
+      });
+      return;
+    }
+
+    type ClaimWithDispute = Prisma.ClaimGetPayload<{
+      include: { dispute: { include: { tenancy: true } } };
+    }>;
+
+    const claim = (await prisma.claim.findUnique({
+      where: { id: claimId },
+      include: {
+        dispute: {
+          include: {
+            tenancy: true,
+          },
+        },
+      },
+    })) as ClaimWithDispute | null;
+
+    if (!claim) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'CLAIM_NOT_FOUND',
+          message: 'Claim not found',
+        },
+      });
+      return;
+    }
+
+    if (claim.dispute.tenancy.landlordId !== landlordId) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to delete this claim',
+        },
+      });
+      return;
+    }
+
+    // Atomically delete evidence records first, then delete the claim
+    await prisma.$transaction([
+      prisma.evidence.deleteMany({ where: { claimId: claim.id } }),
+      prisma.claim.delete({ where: { id: claim.id } }),
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Claim deleted successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
