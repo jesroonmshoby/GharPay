@@ -1,0 +1,60 @@
+// Prisma schema file for GharPay - ODR Platform
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  TENANT
+  LANDLORD
+  MEDIATOR
+  ADMIN
+}
+
+model User {
+  id                String    @id @default(uuid())
+  name              String
+  email             String    @unique
+  phone             String?
+  passwordHash      String?
+  role              UserRole
+  landlordTenancies Tenancy[] @relation("LandlordTenancies")
+  tenantTenancies   Tenancy[] @relation("TenantTenancies")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model Property {
+  id           String    @id @default(uuid())
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String
+  postalCode   String?
+  tenancies    Tenancy[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Tenancy {
+  id              String    @id @default(uuid())
+  propertyId      String
+  property        Property  @relation(fields: [propertyId], references: [id])
+  landlordId      String
+  landlord        User      @relation("LandlordTenancies", fields: [landlordId], references: [id])
+  tenantId        String
+  tenant          User      @relation("TenantTenancies", fields: [tenantId], references: [id])
+  startDate       DateTime
+  endDate         DateTime?
+  monthlyRent     Decimal   @db.Decimal(12, 2)
+  securityDeposit Decimal   @db.Decimal(12, 2)
+  agreementUrl    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
