@@ -21,6 +21,8 @@ import {
   Trash2,
 } from 'lucide-react';
 
+import CourtRegistrationModal from '../../components/common/CourtRegistrationModal';
+
 const EVIDENCE_TYPES = [
   { value: 'PHOTO', label: 'Photo' },
   { value: 'INVOICE', label: 'Invoice' },
@@ -37,6 +39,7 @@ export const LandlordDisputeDetail = () => {
   const [dispute, setDispute] = useState(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
+  const [showCourtModal, setShowCourtModal] = useState(false);
 
   // Add Claim Modal Form State
   const [showClaimForm, setShowClaimForm] = useState(false);
@@ -74,6 +77,42 @@ export const LandlordDisputeDetail = () => {
       showError(err.message || 'Failed to delete claim');
     } finally {
       setDeletingClaimId(null);
+    }
+  };
+
+  const handleDeleteDispute = async () => {
+    if (!window.confirm(`Are you sure you want to delete uninitialized case ${dispute.caseNumber}? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await api.landlord.deleteDispute(dispute.id);
+      showSuccess(`Dispute case ${dispute.caseNumber} deleted successfully.`);
+      window.location.href = '/landlord';
+    } catch (err) {
+      showError(err.message || 'Failed to delete dispute case');
+    }
+  };
+
+  const handleProposeOutsideAgreement = async () => {
+    if (!window.confirm('Propose an Out-of-Court Settlement? This will request mutual consent from the tenant to withdraw the online dispute.')) {
+      return;
+    }
+    try {
+      const res = await api.disputeActions.proposeOutsideAgreement(dispute.id);
+      showSuccess(res.message);
+      await fetchDisputeDetails();
+    } catch (err) {
+      showError(err.message || 'Failed to propose outside agreement');
+    }
+  };
+
+  const handleRespondOutsideAgreement = async (accept) => {
+    try {
+      const res = await api.disputeActions.respondOutsideAgreement(dispute.id, accept);
+      showSuccess(res.message);
+      await fetchDisputeDetails();
+    } catch (err) {
+      showError(err.message || 'Failed to respond to outside agreement');
     }
   };
 
@@ -282,18 +321,80 @@ export const LandlordDisputeDetail = () => {
           </p>
         </div>
 
-        {/* Calculate Action Button */}
-        <div className="flex items-center space-x-3">
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-3">
+          {dispute.status === 'DRAFT' ? (
+            <button
+              onClick={handleDeleteDispute}
+              className="inline-flex items-center space-x-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold px-4 py-2.5 rounded-xl transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete Case</span>
+            </button>
+          ) : dispute.status !== 'SETTLED' ? (
+            <button
+              onClick={handleProposeOutsideAgreement}
+              className="inline-flex items-center space-x-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-300 text-xs font-bold px-4 py-2.5 rounded-xl transition-all"
+            >
+              <FileText className="w-4 h-4 text-amber-700" />
+              <span>Propose Outside Agreement</span>
+            </button>
+          ) : null}
+
+          {(dispute.currentRound >= 3 || dispute.status === 'MEDIATOR_REVIEW' || dispute.status === 'REJECTED') && (
+            <button
+              onClick={() => setShowCourtModal(true)}
+              className="inline-flex items-center space-x-2 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all"
+            >
+              <Scale className="w-4 h-4 text-amber-300" />
+              <span>Apply for Online Court Registration</span>
+            </button>
+          )}
+
           <button
             onClick={handleCalculate}
             disabled={calculating}
-            className="inline-flex items-center space-x-2 bg-[#B68400] hover:bg-[#966d00] text-white text-xs font-bold px-5 py-3 rounded-xl shadow-md transition-all disabled:opacity-50"
+            className="inline-flex items-center space-x-2 bg-[#B68400] hover:bg-[#966d00] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-md transition-all disabled:opacity-50"
           >
             <Calculator className="w-4 h-4" />
-            <span>{calculating ? 'Calculating...' : 'Run GharPay Calculation Engine'}</span>
+            <span>{calculating ? 'Calculating...' : 'Run Engine'}</span>
           </button>
         </div>
       </div>
+
+      {/* Post-3 Negotiation Round / Deadlock Banner */}
+      {(dispute.currentRound >= 3 || dispute.status === 'MEDIATOR_REVIEW') && (
+        <div className="bg-gradient-to-r from-amber-900 via-amber-850 to-zinc-900 text-white p-6 rounded-2xl shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-amber-700/50">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-amber-500/20 rounded-xl border border-amber-400/30 text-amber-300 shrink-0">
+              <Scale className="w-7 h-7" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-amber-200">
+                Negotiation Completed (3 Rounds Finished Without Mutual Settlement)
+              </h3>
+              <p className="text-xs text-zinc-300 max-w-2xl">
+                If parties are unable to reach agreement through GharPay ODR conciliation after 3 rounds, you can generate your official legal application for Online Registration of a Court Case on the e-Courts portal.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowCourtModal(true)}
+            className="px-5 py-2.5 text-xs font-bold text-zinc-900 bg-amber-400 hover:bg-amber-300 rounded-xl shadow transition-all shrink-0 flex items-center gap-2"
+          >
+            <span>Apply for Online Court Case</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Court Registration Modal */}
+      <CourtRegistrationModal
+        isOpen={showCourtModal}
+        onClose={() => setShowCourtModal(false)}
+        dispute={dispute}
+        onSubmitted={() => fetchDisputeDetails()}
+      />
 
       {/* Case Overview Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

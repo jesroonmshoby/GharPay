@@ -14,7 +14,9 @@ import {
   Download,
   FileCheck,
   Award,
+  Scale,
 } from 'lucide-react';
+import CourtRegistrationModal from '../../components/common/CourtRegistrationModal';
 
 export const TenantDisputeDetail = () => {
   const { id } = useParams();
@@ -23,10 +25,34 @@ export const TenantDisputeDetail = () => {
   const [settlement, setSettlement] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [showCourtModal, setShowCourtModal] = useState(false);
 
   // Tenant offer form state
   const [tenantOfferAmount, setTenantOfferAmount] = useState('26000');
   const [tenantOfferMessage, setTenantOfferMessage] = useState('I can agree to ₹26,000 as the deduction.');
+
+  const handleProposeOutsideAgreement = async () => {
+    if (!window.confirm('Propose an Out-of-Court Settlement? This will request mutual consent from the landlord to withdraw the online dispute.')) {
+      return;
+    }
+    try {
+      const res = await api.disputeActions.proposeOutsideAgreement(id);
+      showSuccess(res.message);
+      await fetchDisputeDetails();
+    } catch (err) {
+      showError(err.message || 'Failed to propose outside agreement');
+    }
+  };
+
+  const handleRespondOutsideAgreement = async (accept) => {
+    try {
+      const res = await api.disputeActions.respondOutsideAgreement(id, accept);
+      showSuccess(res.message);
+      await fetchDisputeDetails();
+    } catch (err) {
+      showError(err.message || 'Failed to respond to outside agreement');
+    }
+  };
 
   useEffect(() => {
     fetchDisputeDetails();
@@ -164,12 +190,32 @@ export const TenantDisputeDetail = () => {
         </div>
 
         {/* Dynamic Actions Based on Status */}
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {dispute.status !== 'DRAFT' && dispute.status !== 'SETTLED' && (
+            <button
+              onClick={handleProposeOutsideAgreement}
+              className="inline-flex items-center space-x-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-300 text-xs font-bold px-4 py-2.5 rounded-xl transition-all"
+            >
+              <FileText className="w-4 h-4 text-amber-700" />
+              <span>Propose Outside Agreement</span>
+            </button>
+          )}
+
+          {(dispute.currentRound >= 3 || dispute.status === 'MEDIATOR_REVIEW' || dispute.status === 'REJECTED') && (
+            <button
+              onClick={() => setShowCourtModal(true)}
+              className="inline-flex items-center space-x-2 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all"
+            >
+              <Scale className="w-4 h-4 text-amber-300" />
+              <span>Apply for Online Court Registration</span>
+            </button>
+          )}
+
           {dispute.status === 'CALCULATED' && (
             <button
               onClick={handleReviewCalculation}
               disabled={submitting}
-              className="bg-[#1B8E13] hover:bg-[#15700f] text-white text-xs font-bold px-5 py-3 rounded-xl shadow-md transition-all disabled:opacity-50"
+              className="bg-[#1B8E13] hover:bg-[#15700f] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-md transition-all disabled:opacity-50"
             >
               Review Calculation
             </button>
@@ -179,13 +225,47 @@ export const TenantDisputeDetail = () => {
             <button
               onClick={handleStartNegotiation}
               disabled={submitting}
-              className="bg-[#B68400] hover:bg-[#966d00] text-white text-xs font-bold px-5 py-3 rounded-xl shadow-md transition-all disabled:opacity-50"
+              className="bg-[#B68400] hover:bg-[#966d00] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-md transition-all disabled:opacity-50"
             >
               Start Negotiation
             </button>
           )}
         </div>
       </div>
+
+      {/* Post-3 Negotiation Round / Deadlock Banner */}
+      {(dispute.currentRound >= 3 || dispute.status === 'MEDIATOR_REVIEW') && (
+        <div className="bg-gradient-to-r from-amber-900 via-amber-850 to-zinc-900 text-white p-6 rounded-2xl shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-amber-700/50">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-amber-500/20 rounded-xl border border-amber-400/30 text-amber-300 shrink-0">
+              <Scale className="w-7 h-7" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-amber-200">
+                Negotiation Completed (3 Rounds Finished Without Mutual Settlement)
+              </h3>
+              <p className="text-xs text-zinc-300 max-w-2xl">
+                If conciliation could not settle the deposit deduction after 3 rounds, you can generate your formal legal application for Online Registration of a Court Case on the e-Courts portal.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowCourtModal(true)}
+            className="px-5 py-2.5 text-xs font-bold text-zinc-900 bg-amber-400 hover:bg-amber-300 rounded-xl shadow transition-all shrink-0 flex items-center gap-2"
+          >
+            <span>Apply for Online Court Case</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Court Registration Modal */}
+      <CourtRegistrationModal
+        isOpen={showCourtModal}
+        onClose={() => setShowCourtModal(false)}
+        dispute={dispute}
+        onSubmitted={() => fetchDisputeDetails()}
+      />
 
       {/* Case Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

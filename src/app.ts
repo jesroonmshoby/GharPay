@@ -8,6 +8,7 @@ import tenantRoutes from './routes/tenant.routes';
 import mediatorRoutes from './routes/mediator.routes';
 import adminRoutes from './routes/admin.routes';
 import settlementRoutes from './routes/settlement.routes';
+import disputeActionsRoutes from './routes/disputeActions.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 import path from 'path';
@@ -55,7 +56,7 @@ app.use('/api/tenant', tenantRoutes);
 app.use('/api/mediator', mediatorRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/settlements', settlementRoutes);
-
+app.use('/api/disputes', disputeActionsRoutes);
 
 app.use(errorHandler);
 

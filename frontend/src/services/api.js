@@ -122,6 +122,10 @@ export const api = {
       request(`/landlord/claims/${claimId}`, {
         method: 'DELETE',
       }),
+    deleteDispute: (disputeId) =>
+      request(`/landlord/disputes/${disputeId}`, {
+        method: 'DELETE',
+      }),
     getClaims: (disputeId) => request(`/landlord/disputes/${disputeId}/claims`),
     uploadEvidenceFile: (data) =>
       request('/landlord/evidence/upload', {
@@ -140,6 +144,24 @@ export const api = {
       }),
     submitOffer: (disputeId, data) =>
       request(`/landlord/disputes/${disputeId}/offers`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+
+  // Dispute Actions (Outside Agreement & Court Case Application)
+  disputeActions: {
+    proposeOutsideAgreement: (disputeId) =>
+      request(`/disputes/${disputeId}/outside-agreement/propose`, {
+        method: 'POST',
+      }),
+    respondOutsideAgreement: (disputeId, accept) =>
+      request(`/disputes/${disputeId}/outside-agreement/respond`, {
+        method: 'POST',
+        body: JSON.stringify({ accept }),
+      }),
+    submitCourtApplication: (disputeId, data = {}) =>
+      request(`/disputes/${disputeId}/court-application`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),

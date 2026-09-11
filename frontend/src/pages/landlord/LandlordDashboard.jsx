@@ -3,12 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useNotification } from '../../context/NotificationContext';
 import { formatINR } from '../../utils/formatters';
-import { PlusCircle, Home, FileText, ArrowRight } from 'lucide-react';
+import { PlusCircle, Home, FileText, ArrowRight, Trash2 } from 'lucide-react';
 
 const NON_ACTIVE_STATUSES = ['SETTLED', 'REJECTED'];
 
 export const LandlordDashboard = () => {
-  const { showError } = useNotification();
+  const { showSuccess, showError } = useNotification();
   const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -31,6 +31,23 @@ export const LandlordDashboard = () => {
       showError(err.message || 'Unable to load disputes. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteDispute = async (disputeId, caseNumber) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete uninitialized dispute case ${caseNumber}? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await api.landlord.deleteDispute(disputeId);
+      showSuccess(res.message || `Dispute ${caseNumber} deleted successfully`);
+      fetchDisputes();
+    } catch (err) {
+      showError(err.message || 'Failed to delete dispute case');
     }
   };
 
@@ -175,6 +192,17 @@ export const LandlordDashboard = () => {
                 </div>
 
                 <div className="flex items-center space-x-3">
+                  {d.status === 'DRAFT' && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteDispute(d.id, d.caseNumber)}
+                      className="inline-flex items-center space-x-1.5 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-2 rounded-xl transition-all"
+                      title="Delete uninitialized draft dispute case"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete</span>
+                    </button>
+                  )}
                   <Link
                     to={`/landlord/dispute/${d.id}`}
                     className="inline-flex items-center space-x-1.5 text-xs font-bold text-white bg-[#B68400] hover:bg-[#966d00] px-4 py-2 rounded-xl transition-all shadow-sm"

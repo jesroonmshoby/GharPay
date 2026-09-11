@@ -1098,4 +1098,103 @@ export const deleteClaim = async (
   }
 };
 
+/**
+ * DELETE /api/landlord/disputes/:disputeId
+ * Deletes an uninitialized (DRAFT) dispute case
+ */
+export const deleteDisputeHandler = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const landlordId = req.user?.userId;
+    const disputeId = req.params.disputeId as string;
+
+    if (!landlordId) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+      });
+      return;
+    }
+
+    if (!disputeId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'disputeId URL parameter is required',
+        },
+      });
+      return;
+    }
+
+    const dispute = await prisma.dispute.findUnique({
+      where: { id: disputeId },
+      include: {
+        tenancy: true,
+        claims: true,
+      },
+    });
+
+    if (!dispute) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'DISPUTE_NOT_FOUND',
+          message: 'Dispute case not found',
+        },
+      });
+      return;
+    }
+
+    if (dispute.tenancy.landlordId !== landlordId) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to delete this dispute case',
+        },
+      });
+      return;
+    }
+
+    // Uninitialized check: only DRAFT disputes can be unilaterally deleted
+    if (dispute.status !== DisputeStatus.DRAFT) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'CANNOT_DELETE_INITIALIZED_DISPUTE',
+          message: 'Initialized dispute cases cannot be deleted unilaterally. Mutual consent is required to withdraw an active case.',
+        },
+      });
+      return;
+    }
+
+    const claimIds = dispute.claims.map((c) => c.id);
+
+    // Atomically delete evidence, claims, offers, auditLogs, settlement, and dispute
+    await prisma.$transaction([
+      prisma.evidence.deleteMany({ where: { claimId: { in: claimIds } } }),
+      prisma.claim.deleteMany({ where: { disputeId } }),
+      prisma.offer.deleteMany({ where: { disputeId } }),
+      prisma.auditLog.deleteMany({ where: { disputeId } }),
+      prisma.settlement.deleteMany({ where: { disputeId } }),
+      prisma.dispute.delete({ where: { id: disputeId } }),
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Uninitialized dispute case deleted successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 
