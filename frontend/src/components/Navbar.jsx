@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shield, LogOut, User as UserIcon, Home, FileText, Scale } from 'lucide-react';
+import { Shield, LogOut, User as UserIcon, Home, FileText, Scale, HelpCircle } from 'lucide-react';
 
 export const Navbar = () => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -19,7 +19,6 @@ export const Navbar = () => {
       case 'TENANT':
         return '/tenant';
       case 'MEDIATOR':
-        return '/mediator';
       case 'ADMIN':
         return '/mediator';
       default:
@@ -52,6 +51,14 @@ export const Navbar = () => {
           {/* Navigation Items */}
           {isAuthenticated ? (
             <div className="flex items-center space-x-4">
+              <Link
+                to="/how-it-works"
+                className="hidden md:flex items-center space-x-1 text-sm font-medium text-[#737373] hover:text-[#B68400] transition-colors px-3 py-2 rounded-lg hover:bg-[#F7F7F5]"
+              >
+                <HelpCircle className="w-4 h-4" />
+                <span>How It Works</span>
+              </Link>
+
               <Link
                 to={getRoleHomePath(user?.role)}
                 className="flex items-center space-x-1 text-sm font-medium text-[#505423] hover:text-[#B68400] transition-colors px-3 py-2 rounded-lg hover:bg-[#F7F7F5]"
@@ -92,16 +99,22 @@ export const Navbar = () => {
           ) : (
             <div className="flex items-center space-x-3">
               <Link
+                to="/how-it-works"
+                className="text-sm font-medium text-[#737373] hover:text-[#B68400] px-3 py-2 rounded-lg transition-colors"
+              >
+                How It Works
+              </Link>
+              <Link
                 to="/login"
-                className="text-sm font-semibold text-[#505423] hover:text-[#B68400] px-4 py-2 rounded-lg transition-colors"
+                className="text-sm font-semibold text-[#505423] hover:text-[#B68400] px-3 py-2 rounded-lg transition-colors"
               >
                 Sign In
               </Link>
               <Link
-                to="/register"
+                to="/signup"
                 className="text-sm font-semibold text-white bg-[#B68400] hover:bg-[#966d00] px-4 py-2 rounded-lg shadow-sm transition-all"
               >
-                Register
+                Sign Up
               </Link>
             </div>
           )}
@@ -114,4 +127,3 @@ export const Navbar = () => {
 };
 
 export default Navbar;
-

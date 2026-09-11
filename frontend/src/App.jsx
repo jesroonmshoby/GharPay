@@ -3,8 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import Landing from './pages/Landing';
+import HowItWorks from './pages/HowItWorks';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import NotFound from './pages/NotFound';
+import ErrorPage from './pages/ErrorPage';
 import LandlordDashboard from './pages/landlord/LandlordDashboard';
 import LandlordIntake from './pages/landlord/LandlordIntake';
 import LandlordDisputeDetail from './pages/landlord/LandlordDisputeDetail';
@@ -14,16 +17,16 @@ import MediatorDashboard from './pages/mediator/MediatorDashboard';
 import MediatorCaseDetail from './pages/mediator/MediatorCaseDetail';
 import SettlementView from './pages/settlement/SettlementView';
 
-// Protected Route Wrapper
+// Protected Route Wrapper Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F7F7F5]">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-[#B68400] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading GharPay session...</p>
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 border-4 border-[#B68400] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs text-[#737373] font-medium">Restoring GharPay ODR Session...</p>
         </div>
       </div>
     );
@@ -34,13 +37,14 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    // Redirect user to their appropriate role home
+    // Redirect authorized users to their respective role home dashboards
     switch (user.role) {
       case 'LANDLORD':
         return <Navigate to="/landlord" replace />;
       case 'TENANT':
         return <Navigate to="/tenant" replace />;
       case 'MEDIATOR':
+      case 'ADMIN':
         return <Navigate to="/mediator" replace />;
       default:
         return <Navigate to="/" replace />;
@@ -60,15 +64,43 @@ export default function App() {
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<Landing />} />
+              <Route path="/how-it-works" element={<HowItWorks />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Register />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/404" element={<NotFound />} />
+              <Route path="/error" element={<ErrorPage />} />
 
-              {/* Landlord Routes */}
+              {/* Landlord Protected Routes */}
               <Route
                 path="/landlord"
                 element={
                   <ProtectedRoute allowedRoles={['LANDLORD']}>
                     <LandlordDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/landlord/disputes"
+                element={
+                  <ProtectedRoute allowedRoles={['LANDLORD']}>
+                    <LandlordDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/landlord/disputes/new"
+                element={
+                  <ProtectedRoute allowedRoles={['LANDLORD']}>
+                    <LandlordIntake />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/landlord/disputes/:id"
+                element={
+                  <ProtectedRoute allowedRoles={['LANDLORD']}>
+                    <LandlordDisputeDetail />
                   </ProtectedRoute>
                 }
               />
@@ -89,12 +121,28 @@ export default function App() {
                 }
               />
 
-              {/* Tenant Routes */}
+              {/* Tenant Protected Routes */}
               <Route
                 path="/tenant"
                 element={
                   <ProtectedRoute allowedRoles={['TENANT']}>
                     <TenantDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tenant/disputes"
+                element={
+                  <ProtectedRoute allowedRoles={['TENANT']}>
+                    <TenantDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tenant/disputes/:id"
+                element={
+                  <ProtectedRoute allowedRoles={['TENANT']}>
+                    <TenantDisputeDetail />
                   </ProtectedRoute>
                 }
               />
@@ -107,25 +155,41 @@ export default function App() {
                 }
               />
 
-              {/* Mediator Routes */}
+              {/* Mediator Protected Routes */}
               <Route
                 path="/mediator"
                 element={
-                  <ProtectedRoute allowedRoles={['MEDIATOR']}>
+                  <ProtectedRoute allowedRoles={['MEDIATOR', 'ADMIN']}>
                     <MediatorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/mediator/cases"
+                element={
+                  <ProtectedRoute allowedRoles={['MEDIATOR', 'ADMIN']}>
+                    <MediatorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/mediator/cases/:id"
+                element={
+                  <ProtectedRoute allowedRoles={['MEDIATOR', 'ADMIN']}>
+                    <MediatorCaseDetail />
                   </ProtectedRoute>
                 }
               />
               <Route
                 path="/mediator/dispute/:id"
                 element={
-                  <ProtectedRoute allowedRoles={['MEDIATOR']}>
+                  <ProtectedRoute allowedRoles={['MEDIATOR', 'ADMIN']}>
                     <MediatorCaseDetail />
                   </ProtectedRoute>
                 }
               />
 
-              {/* Settlement Page (accessible by any logged in party) */}
+              {/* Universal Settlement View Route */}
               <Route
                 path="/settlement/:id"
                 element={
@@ -135,8 +199,8 @@ export default function App() {
                 }
               />
 
-              {/* Catch-all fallback */}
-              <Route path="*" element={<Navigate to="/" replace />} />
+              {/* Catch-all 404 Route */}
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </main>
           <footer className="bg-white border-t border-[#E5E5E5] py-6 text-center text-xs text-[#737373]">
