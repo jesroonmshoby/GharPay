@@ -7,6 +7,7 @@ import {
   getClaims,
   createEvidence,
   getDisputeDetails,
+  calculateDisputeHandler,
 } from '../controllers/landlord.controller';
 import { authenticateJwt, requireRole } from '../middleware/auth';
 import { UserRole } from '@prisma/client';
@@ -25,5 +26,7 @@ router.post('/disputes/:disputeId/claims', createClaim);
 router.get('/disputes/:disputeId/claims', getClaims);
 router.post('/claims/:claimId/evidence', createEvidence);
 router.get('/disputes/:disputeId', getDisputeDetails);
+
+router.post('/disputes/:disputeId/calculate', calculateDisputeHandler);
 
 export default router;
