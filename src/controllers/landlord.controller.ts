@@ -1,5 +1,14 @@
 import { Response, NextFunction } from 'express';
-import { Prisma, DisputeStatus, AuditAction, UserRole } from '@prisma/client';
+import {
+  Prisma,
+  DisputeStatus,
+  ClaimCategory,
+  ClaimStatus,
+  EvidenceType,
+  VerificationStatus,
+  AuditAction,
+  UserRole,
+} from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
 
@@ -263,7 +272,6 @@ export const createDispute = async (
       return;
     }
 
-    // 1. Verify tenancy exists
     const tenancy = await prisma.tenancy.findUnique({
       where: { id: tenancyId },
     });
@@ -279,7 +287,6 @@ export const createDispute = async (
       return;
     }
 
-    // 2. Verify authorization: authenticated landlord owns the tenancy
     if (tenancy.landlordId !== landlordId) {
       res.status(403).json({
         success: false,
@@ -293,7 +300,6 @@ export const createDispute = async (
 
     const claimedDeductionDecimal = new Prisma.Decimal(claimedDeduction);
 
-    // 3. Data validation for claimed deduction
     if (
       claimedDeductionDecimal.isNegative() ||
       claimedDeductionDecimal.greaterThan(tenancy.securityDeposit)
@@ -310,7 +316,6 @@ export const createDispute = async (
 
     const caseNumber = await generateCaseNumber();
 
-    // 4. Create Dispute + AuditLog atomically in a Prisma Transaction
     const result = await prisma.$transaction(async (tx) => {
       const newDispute = await tx.dispute.create({
         data: {
@@ -353,6 +358,440 @@ export const createDispute = async (
         calculatedDeduction: formatDecimal(result.calculatedDeduction),
         currentRound: result.currentRound,
         settlementEligible: result.settlementEligible,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/landlord/disputes/:disputeId/claims
+ * Creates a claim for an existing dispute owned by the landlord
+ */
+export const createClaim = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const landlordId = req.user?.userId;
+    const disputeId = req.params.disputeId as string;
+    const { category, description, claimedAmount } = req.body;
+
+    if (!disputeId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'disputeId URL parameter is required',
+        },
+      });
+      return;
+    }
+
+    if (!category || !description || claimedAmount === undefined || claimedAmount === null) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'category, description, and claimedAmount are required',
+        },
+      });
+      return;
+    }
+
+    if (!Object.values(ClaimCategory).includes(category as ClaimCategory)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_CATEGORY',
+          message: `Category must be one of: ${Object.values(ClaimCategory).join(', ')}`,
+        },
+      });
+      return;
+    }
+
+    const claimedAmountDecimal = new Prisma.Decimal(claimedAmount);
+    if (claimedAmountDecimal.isNegative()) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_AMOUNT',
+          message: 'claimedAmount must be greater than or equal to 0',
+        },
+      });
+      return;
+    }
+
+    type DisputeWithTenancyAndClaims = Prisma.DisputeGetPayload<{
+      include: { tenancy: true; claims: true };
+    }>;
+
+    const dispute = (await prisma.dispute.findUnique({
+      where: { id: disputeId },
+      include: {
+        tenancy: true,
+        claims: true,
+      },
+    })) as DisputeWithTenancyAndClaims | null;
+
+    if (!dispute) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'DISPUTE_NOT_FOUND',
+          message: 'Dispute not found',
+        },
+      });
+      return;
+    }
+
+    if (dispute.tenancy.landlordId !== landlordId) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this dispute',
+        },
+      });
+      return;
+    }
+
+    const existingTotal = dispute.claims.reduce(
+      (sum: Prisma.Decimal, claim) => sum.add(claim.claimedAmount),
+      new Prisma.Decimal(0)
+    );
+
+    const newTotal = existingTotal.add(claimedAmountDecimal);
+
+    if (newTotal.greaterThan(dispute.claimedDeduction)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'CLAIMS_EXCEED_DEDUCTION',
+          message: 'Total claim amounts cannot exceed the disputed deduction',
+        },
+      });
+      return;
+    }
+
+    const claim = await prisma.claim.create({
+      data: {
+        disputeId: dispute.id,
+        category: category as ClaimCategory,
+        description,
+        claimedAmount: claimedAmountDecimal,
+        approvedAmount: null,
+        status: ClaimStatus.PENDING,
+        calculationExplanation: null,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      claim: {
+        id: claim.id,
+        disputeId: claim.disputeId,
+        category: claim.category,
+        description: claim.description,
+        claimedAmount: formatDecimal(claim.claimedAmount),
+        approvedAmount: formatDecimal(claim.approvedAmount),
+        status: claim.status,
+        calculationExplanation: claim.calculationExplanation,
+        createdAt: claim.createdAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/landlord/disputes/:disputeId/claims
+ * Fetches all claims for a dispute owned by the landlord
+ */
+export const getClaims = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const landlordId = req.user?.userId;
+    const disputeId = req.params.disputeId as string;
+
+    type DisputeWithTenancyAndClaims = Prisma.DisputeGetPayload<{
+      include: { tenancy: true; claims: { include: { evidence: true } } };
+    }>;
+
+    const dispute = (await prisma.dispute.findUnique({
+      where: { id: disputeId },
+      include: {
+        tenancy: true,
+        claims: {
+          include: {
+            evidence: true,
+          },
+        },
+      },
+    })) as DisputeWithTenancyAndClaims | null;
+
+    if (!dispute) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'DISPUTE_NOT_FOUND',
+          message: 'Dispute not found',
+        },
+      });
+      return;
+    }
+
+    if (dispute.tenancy.landlordId !== landlordId) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this dispute',
+        },
+      });
+      return;
+    }
+
+    const claimsFormatted = dispute.claims.map((claim) => ({
+      id: claim.id,
+      category: claim.category,
+      description: claim.description,
+      claimedAmount: formatDecimal(claim.claimedAmount),
+      approvedAmount: formatDecimal(claim.approvedAmount),
+      status: claim.status,
+      calculationExplanation: claim.calculationExplanation,
+      evidence: claim.evidence.map((ev) => ({
+        id: ev.id,
+        type: ev.type,
+        fileUrl: ev.fileUrl,
+        description: ev.description,
+        verificationStatus: ev.verificationStatus,
+        createdAt: ev.createdAt.toISOString(),
+      })),
+    }));
+
+    res.json({
+      success: true,
+      claims: claimsFormatted,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/landlord/claims/:claimId/evidence
+ * Creates evidence reference and logs EVIDENCE_UPLOADED AuditLog in a transaction
+ */
+export const createEvidence = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const landlordId = req.user?.userId;
+    const claimId = req.params.claimId as string;
+    const { type, fileUrl, description } = req.body;
+
+    if (!claimId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'claimId URL parameter is required',
+        },
+      });
+      return;
+    }
+
+    if (!type || !fileUrl) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'type and fileUrl are required',
+        },
+      });
+      return;
+    }
+
+    if (!Object.values(EvidenceType).includes(type as EvidenceType)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_EVIDENCE_TYPE',
+          message: `Type must be one of: ${Object.values(EvidenceType).join(', ')}`,
+        },
+      });
+      return;
+    }
+
+    type ClaimWithDispute = Prisma.ClaimGetPayload<{
+      include: { dispute: { include: { tenancy: true } } };
+    }>;
+
+    const claim = (await prisma.claim.findUnique({
+      where: { id: claimId },
+      include: {
+        dispute: {
+          include: {
+            tenancy: true,
+          },
+        },
+      },
+    })) as ClaimWithDispute | null;
+
+    if (!claim) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'CLAIM_NOT_FOUND',
+          message: 'Claim not found',
+        },
+      });
+      return;
+    }
+
+    if (claim.dispute.tenancy.landlordId !== landlordId) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this claim',
+        },
+      });
+      return;
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const evidence = await tx.evidence.create({
+        data: {
+          claimId: claim.id,
+          uploadedBy: landlordId!,
+          type: type as EvidenceType,
+          fileUrl,
+          description: description || null,
+          verificationStatus: VerificationStatus.PENDING,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          disputeId: claim.disputeId,
+          userId: landlordId!,
+          action: AuditAction.EVIDENCE_UPLOADED,
+          metadata: {
+            claimId: claim.id,
+            evidenceType: evidence.type,
+          },
+        },
+      });
+
+      return evidence;
+    });
+
+    res.status(201).json({
+      success: true,
+      evidence: {
+        id: result.id,
+        claimId: result.claimId,
+        type: result.type,
+        fileUrl: result.fileUrl,
+        description: result.description,
+        verificationStatus: result.verificationStatus,
+        uploadedBy: result.uploadedBy,
+        createdAt: result.createdAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/landlord/disputes/:disputeId
+ * Fetches full dispute details with claims and evidence for the landlord owner
+ */
+export const getDisputeDetails = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const landlordId = req.user?.userId;
+    const disputeId = req.params.disputeId as string;
+
+    type DisputeFull = Prisma.DisputeGetPayload<{
+      include: { tenancy: true; claims: { include: { evidence: true } } };
+    }>;
+
+    const dispute = (await prisma.dispute.findUnique({
+      where: { id: disputeId },
+      include: {
+        tenancy: true,
+        claims: {
+          include: {
+            evidence: true,
+          },
+        },
+      },
+    })) as DisputeFull | null;
+
+    if (!dispute) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'DISPUTE_NOT_FOUND',
+          message: 'Dispute not found',
+        },
+      });
+      return;
+    }
+
+    if (dispute.tenancy.landlordId !== landlordId) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this dispute',
+        },
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      dispute: {
+        id: dispute.id,
+        caseNumber: dispute.caseNumber,
+        status: dispute.status,
+        totalDeposit: formatDecimal(dispute.totalDeposit),
+        claimedDeduction: formatDecimal(dispute.claimedDeduction),
+        calculatedDeduction: formatDecimal(dispute.calculatedDeduction),
+        currentRound: dispute.currentRound,
+        settlementEligible: dispute.settlementEligible,
+        claims: dispute.claims.map((claim) => ({
+          id: claim.id,
+          category: claim.category,
+          description: claim.description,
+          claimedAmount: formatDecimal(claim.claimedAmount),
+          approvedAmount: formatDecimal(claim.approvedAmount),
+          status: claim.status,
+          calculationExplanation: claim.calculationExplanation,
+          evidence: claim.evidence.map((ev) => ({
+            id: ev.id,
+            type: ev.type,
+            fileUrl: ev.fileUrl,
+            description: ev.description,
+            verificationStatus: ev.verificationStatus,
+          })),
+        })),
       },
     });
   } catch (error) {
