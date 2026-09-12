@@ -60,49 +60,26 @@ export const calculateDispute = async (
     throw err;
   }
 
-  if (dispute.tenancy.landlordId !== userId) {
+  if (dispute.tenancy.landlordId !== userId && dispute.tenancy.tenantId !== userId) {
     const err = new Error('You do not have access to this dispute');
     (err as any).statusCode = 403;
     (err as any).code = 'FORBIDDEN';
     throw err;
   }
 
-  // Verify all claims have been reviewed by mediator
-  const unreviewedClaims = dispute.claims.filter(
-    (c) => c.status === ClaimStatus.PENDING || c.status === ClaimStatus.NEEDS_CLARIFICATION
-  );
-
-  if (unreviewedClaims.length > 0) {
-    const err = new Error('All claims must be reviewed by the mediator before calculation.');
-    (err as any).statusCode = 400;
-    (err as any).code = 'CLAIMS_AWAITING_MEDIATOR_REVIEW';
-    throw err;
-  }
-
   const evaluatedClaims = dispute.claims.map((claim) => {
-    const approvedAmountDecimal = claim.approvedAmount || new Prisma.Decimal(0);
+    const approvedAmountDecimal = calculateCategoryApproval(claim.category, claim.claimedAmount);
     const rule = calculationRules[claim.category];
 
-    let explanation = claim.calculationExplanation;
-    if (!explanation) {
-      if (claim.status === ClaimStatus.APPROVED) {
-        explanation = `Approved at ₹${approvedAmountDecimal.toFixed(2)} based on mediator review under ${rule.name}.`;
-      } else if (claim.status === ClaimStatus.PARTIAL) {
-        explanation = `Partially approved at ₹${approvedAmountDecimal.toFixed(2)} based on mediator review under ${rule.name}.`;
-      } else if (claim.status === ClaimStatus.REJECTED) {
-        explanation = `Rejected at ₹0.00 based on mediator review under ${rule.name}.`;
-      } else {
-        explanation = `Evaluated at ₹${approvedAmountDecimal.toFixed(2)} based on mediator review.`;
-      }
-    }
+    const explanation = `GharPay calculated deduction of ₹${approvedAmountDecimal.toFixed(2)} under ${rule.name}.`;
 
     return {
       id: claim.id,
       category: claim.category,
       claimedAmountDecimal: claim.claimedAmount,
       approvedAmountDecimal,
-      status: claim.status,
-      newStatus: claim.status,
+      status: ClaimStatus.APPROVED,
+      newStatus: ClaimStatus.APPROVED,
       explanation,
     };
   });
@@ -119,6 +96,8 @@ export const calculateDispute = async (
       await tx.claim.update({
         where: { id: evaluated.id },
         data: {
+          approvedAmount: evaluated.approvedAmountDecimal,
+          status: evaluated.status,
           calculationExplanation: evaluated.explanation,
         },
       });

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { assignMediatorHandler } from '../controllers/admin.controller';
+import { getAuditLogsHandler } from '../controllers/admin.controller';
 import { authenticateJwt, requireRole } from '../middleware/auth';
 import { UserRole } from '@prisma/client';
 
@@ -9,6 +9,6 @@ const router = Router();
 router.use(authenticateJwt);
 router.use(requireRole([UserRole.ADMIN]));
 
-router.post('/disputes/:disputeId/assign', assignMediatorHandler);
+router.get('/audit-logs', getAuditLogsHandler);
 
 export default router;

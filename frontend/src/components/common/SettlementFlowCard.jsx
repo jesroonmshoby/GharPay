@@ -25,37 +25,24 @@ export const SettlementFlowCard = ({ dispute, settlement: initialSettlement, use
   if (!dispute) return null;
 
   const isEligible = dispute.settlementEligible;
-  const isMediatorReview = dispute.status === 'MEDIATOR_REVIEW';
   const isSettlementPending = dispute.status === 'SETTLEMENT_PENDING';
   const isSettled = dispute.status === 'SETTLED';
   const isPaid = settlement?.paymentStatus === 'MARKED_PAID';
 
-  // Request Mediator Review
-  const handleRequestMediatorReview = async () => {
+  // Continue to Settlement (Direct Transition)
+  const handleContinueToSettlement = async () => {
     setSubmitting(true);
     try {
-      const res = await api.disputeActions.requestMediatorReview(dispute.id);
-      showSuccess(res.message || 'Mediator review requested successfully.');
+      const agreedDeduction = dispute.landlordOffer || dispute.calculatedDeduction || dispute.claimedDeduction || 0;
+      await api.settlement.createSettlement(dispute.id, { agreedDeduction });
+      showSuccess('Settlement initialized. Both parties may now record digital consent.');
       if (onRefresh) await onRefresh();
     } catch (err) {
-      showError(err.message || 'Unable to request mediator review. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Mediator Recommendation (Priya Menon)
-  const handleMediatorRecommendation = async (recommendation) => {
-    setSubmitting(true);
-    try {
-      await api.mediator.submitRecommendation(dispute.id, {
-        recommendation,
-        note: 'Reviewed settlement eligibility and terms.',
-      });
-      showSuccess(`Settlement recommendation updated: ${recommendation}`);
-      if (onRefresh) await onRefresh();
-    } catch (err) {
-      showError(err.message || 'Failed to update recommendation');
+      if (err.code === 'DUPLICATE_SETTLEMENT') {
+        if (onRefresh) await onRefresh();
+      } else {
+        showError(err.message || 'Unable to initialize settlement. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -116,7 +103,7 @@ export const SettlementFlowCard = ({ dispute, settlement: initialSettlement, use
     }
   };
 
-  // STAGE 6: PAID -> Show PDF Download
+  // STAGE 4: PAID -> Show PDF Download
   if (isSettled && isPaid) {
     return (
       <div className="bg-white p-6 rounded-2xl border-2 border-[#1B8E13] shadow-sm space-y-4">
@@ -141,7 +128,7 @@ export const SettlementFlowCard = ({ dispute, settlement: initialSettlement, use
     );
   }
 
-  // STAGE 5: SETTLED -> Show Consent Badges & Mark as Paid Action
+  // STAGE 3: SETTLED -> Show Consent Badges & Mark as Paid Action
   if (isSettled) {
     return (
       <div className="bg-white p-6 rounded-2xl border-2 border-[#1B8E13] shadow-sm space-y-4">
@@ -232,7 +219,7 @@ export const SettlementFlowCard = ({ dispute, settlement: initialSettlement, use
     );
   }
 
-  // STAGE 4: SETTLEMENT PENDING -> Party Consents
+  // STAGE 2: SETTLEMENT PENDING -> Party Consents
   if (isSettlementPending) {
     return (
       <div className="bg-white p-6 rounded-2xl border-2 border-[#B68400] shadow-sm space-y-4">
@@ -286,87 +273,23 @@ export const SettlementFlowCard = ({ dispute, settlement: initialSettlement, use
     );
   }
 
-  // STAGE 3: MEDIATOR REVIEW -> Priya Menon Controls
-  if (isMediatorReview && userRole === 'MEDIATOR') {
-    const agreedDeduction = dispute.calculatedDeduction || dispute.landlordOffer || dispute.claimedDeduction || '0';
-    const totalDep = parseFloat(dispute.totalDeposit) || 0;
-    const agreedDed = parseFloat(agreedDeduction) || 0;
-    const refundAmt = Math.max(0, totalDep - agreedDed);
-
-    return (
-      <div className="bg-white rounded-2xl border-2 border-[#505423] p-6 space-y-4 shadow-sm">
-        <div className="flex items-center space-x-2 text-[#505423]">
-          <Scale className="w-6 h-6" />
-          <h2 className="text-lg font-extrabold uppercase">SETTLEMENT REVIEW</h2>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#F7F7F5] p-4 rounded-xl border border-[#E5E5E5]">
-          <div>
-            <span className="text-xs text-[#737373] uppercase font-semibold block">Agreed Deduction</span>
-            <span className="text-2xl font-extrabold text-[#111111]">
-              {formatINR(agreedDeduction)}
-            </span>
-          </div>
-          <div>
-            <span className="text-xs text-[#737373] uppercase font-semibold block">Refund to Tenant</span>
-            <span className="text-2xl font-extrabold text-[#1B8E13]">
-              {formatINR(refundAmt)}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-4 pt-2">
-          <button
-            type="button"
-            onClick={() => handleMediatorRecommendation('READY_FOR_SETTLEMENT')}
-            disabled={submitting}
-            className="px-6 py-3 bg-[#1B8E13] hover:bg-[#15700f] text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center space-x-2 disabled:opacity-50"
-          >
-            <CheckCircle className="w-4 h-4" />
-            <span>Approve Settlement</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleMediatorRecommendation('CONTINUE_NEGOTIATION')}
-            disabled={submitting}
-            className="px-6 py-3 bg-[#B68400] hover:bg-[#966d00] text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center space-x-2 disabled:opacity-50"
-          >
-            <Clock className="w-4 h-4" />
-            <span>Continue Negotiation</span>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // STAGE 2: MEDIATOR REVIEW REQUESTED (For Landlord or Tenant)
-  if (isMediatorReview) {
-    return (
-      <div className="bg-[#F7F7F5] border-2 border-[#505423] p-6 rounded-2xl shadow-sm space-y-2">
-        <div className="flex items-center space-x-2 text-[#505423] text-base font-extrabold">
-          <CheckCircle className="w-5 h-5" />
-          <span>✓ Mediator Review Requested</span>
-        </div>
-        <p className="text-sm font-semibold text-[#111111]">
-          "Priya Menon will review the settlement."
-        </p>
-      </div>
-    );
-  }
-
   // STAGE 1: SETTLEMENT IS ELIGIBLE
   if (isEligible) {
+    const landlordOffer = parseFloat(dispute.landlordOffer) || 0;
+    const tenantOffer = parseFloat(dispute.tenantOffer) || 0;
+    const diff = Math.abs(landlordOffer - tenantOffer);
+
     return (
       <div className="bg-[#FFFDF5] border-2 border-[#B68400] p-6 rounded-2xl shadow-md space-y-4">
         <div className="flex items-center space-x-2 text-[#B68400]">
           <Award className="w-6 h-6" />
-          <h2 className="text-lg font-extrabold tracking-wide uppercase">SETTLEMENT</h2>
+          <h2 className="text-lg font-extrabold tracking-wide uppercase">SETTLEMENT ELIGIBLE</h2>
         </div>
         <p className="text-sm font-semibold text-[#111111]">
-          "Your negotiation has reached settlement eligibility."
+          Your negotiation has reached settlement eligibility under configured GharPay rules.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white p-4 rounded-xl border border-[#E5E5E5]">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-white p-4 rounded-xl border border-[#E5E5E5]">
           <div>
             <span className="text-xs text-[#737373] block font-semibold uppercase">Calculated Deduction</span>
             <span className="text-base font-extrabold text-[#1B8E13]">
@@ -385,15 +308,21 @@ export const SettlementFlowCard = ({ dispute, settlement: initialSettlement, use
               {dispute.tenantOffer ? formatINR(dispute.tenantOffer) : 'None'}
             </span>
           </div>
+          <div>
+            <span className="text-xs text-[#737373] block font-semibold uppercase">Difference</span>
+            <span className="text-base font-extrabold text-[#B68400]">
+              {diff > 0 ? formatINR(diff) : '₹0'}
+            </span>
+          </div>
         </div>
 
         <button
-          onClick={handleRequestMediatorReview}
+          onClick={handleContinueToSettlement}
           disabled={submitting}
           className="w-full sm:w-auto px-6 py-3 bg-[#B68400] hover:bg-[#966d00] text-white font-extrabold text-sm rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
         >
-          <Scale className="w-5 h-5" />
-          <span>Request Mediator Review</span>
+          <Award className="w-5 h-5" />
+          <span>{submitting ? 'Initializing...' : 'Continue to Settlement'}</span>
         </button>
       </div>
     );

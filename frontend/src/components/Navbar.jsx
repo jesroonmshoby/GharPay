@@ -18,9 +18,6 @@ export const Navbar = () => {
         return '/landlord';
       case 'TENANT':
         return '/tenant';
-      case 'MEDIATOR':
-      case 'ADMIN':
-        return '/mediator';
       default:
         return '/';
     }

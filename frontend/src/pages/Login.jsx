@@ -26,8 +26,6 @@ export const Login = () => {
         navigate('/landlord');
       } else if (loggedUser.role === 'TENANT') {
         navigate('/tenant');
-      } else if (loggedUser.role === 'MEDIATOR' || loggedUser.role === 'ADMIN') {
-        navigate('/mediator');
       } else {
         navigate('/');
       }
@@ -50,8 +48,6 @@ export const Login = () => {
         navigate('/landlord');
       } else if (loggedUser.role === 'TENANT') {
         navigate('/tenant');
-      } else if (loggedUser.role === 'MEDIATOR' || loggedUser.role === 'ADMIN') {
-        navigate('/mediator');
       }
     } catch (err) {
       showError(err.message || 'Demo login failed.');
@@ -82,22 +78,27 @@ export const Login = () => {
           </div>
         )}
 
-        {/* Default Mediator Quick Sign-In */}
+        {/* Demo Quick Sign-In Options */}
         <div className="bg-[#F7F7F5] border border-[#E5E5E5] p-4 rounded-xl space-y-2">
           <span className="text-[11px] font-bold uppercase tracking-wider text-[#505423] block">
-            Default Mediator Quick Sign-In
+            Demo Quick Sign-In
           </span>
-          <div>
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => handleDemoLogin('priya.mediator@gharpay.in')}
-              className="w-full text-xs font-semibold py-2.5 px-3 bg-white border border-[#E5E5E5] hover:border-[#505423] text-[#111111] rounded-lg transition-all flex items-center justify-between hover:bg-[#505423]/5 shadow-sm"
+              onClick={() => handleDemoLogin('ramesh@demo.com')}
+              className="w-full text-xs font-semibold py-2.5 px-3 bg-white border border-[#E5E5E5] hover:border-[#B68400] text-[#111111] rounded-lg transition-all flex flex-col items-start shadow-sm hover:bg-[#B68400]/5"
             >
-              <div className="flex items-center space-x-2">
-                <span>⚖️ Mediator Account</span>
-                <span className="text-[#505423] font-bold">(Priya Menon)</span>
-              </div>
-              <span className="text-[10px] text-[#737373]">priya.mediator@gharpay.in</span>
+              <span className="font-bold text-[#B68400]">🏡 Landlord</span>
+              <span className="text-[10px] text-[#737373]">ramesh@demo.com</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDemoLogin('aarav@demo.com')}
+              className="w-full text-xs font-semibold py-2.5 px-3 bg-white border border-[#E5E5E5] hover:border-[#1B8E13] text-[#111111] rounded-lg transition-all flex flex-col items-start shadow-sm hover:bg-[#1B8E13]/5"
+            >
+              <span className="font-bold text-[#1B8E13]">👤 Tenant</span>
+              <span className="text-[10px] text-[#737373]">aarav@demo.com</span>
             </button>
           </div>
         </div>

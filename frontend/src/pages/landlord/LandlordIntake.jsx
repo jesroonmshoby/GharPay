@@ -15,8 +15,8 @@ export const LandlordIntake = () => {
   // Property State
   const [propertyData, setPropertyData] = useState({
     addressLine1: '',
-    city: '',
-    state: '',
+    city: 'Bengaluru',
+    state: 'Karnataka',
     postalCode: '',
   });
   const [createdPropertyId, setCreatedPropertyId] = useState('');

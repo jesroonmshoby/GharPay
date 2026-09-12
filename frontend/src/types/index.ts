@@ -1,4 +1,4 @@
-export type UserRole = 'TENANT' | 'LANDLORD' | 'MEDIATOR' | 'ADMIN';
+export type UserRole = 'TENANT' | 'LANDLORD' | 'ADMIN';
 
 export type DisputeStatus =
   | 'DRAFT'
@@ -7,7 +7,6 @@ export type DisputeStatus =
   | 'CALCULATED'
   | 'TENANT_REVIEW'
   | 'NEGOTIATION'
-  | 'MEDIATOR_REVIEW'
   | 'SETTLEMENT_PENDING'
   | 'SETTLED'
   | 'REJECTED';
@@ -21,12 +20,6 @@ export type EvidenceType = 'PHOTO' | 'INVOICE' | 'RECEIPT' | 'AGREEMENT' | 'METE
 export type VerificationStatus = 'PENDING' | 'SUPPORTED' | 'PARTIAL' | 'INSUFFICIENT';
 
 export type OfferStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED';
-
-export type MediatorRecommendation =
-  | 'READY_FOR_SETTLEMENT'
-  | 'CONTINUE_NEGOTIATION'
-  | 'INSUFFICIENT_EVIDENCE'
-  | 'NEEDS_CLARIFICATION';
 
 export interface User {
   id: string;
@@ -118,7 +111,6 @@ export interface Dispute {
   property?: Property;
   status: DisputeStatus;
   initiatedBy: string;
-  mediatorId?: string;
   totalDeposit: number | string;
   claimedDeduction: number | string;
   calculatedDeduction?: number | string | null;
@@ -126,7 +118,6 @@ export interface Dispute {
   landlordOffer?: number | string | null;
   currentRound: number;
   settlementEligible: boolean;
-  mediatorRecommendation?: MediatorRecommendation | null;
   claims?: Claim[];
   offers?: Offer[];
   settlement?: Settlement | null;

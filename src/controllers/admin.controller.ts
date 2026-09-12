@@ -1,60 +1,30 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { assignMediator } from '../services/mediator.service';
+import { prisma } from '../lib/prisma';
 
 /**
- * POST /api/admin/disputes/:disputeId/assign
- * Assigns a mediator user to a dispute (Admin only)
+ * GET /api/admin/audit-logs
+ * Fetches platform audit logs for monitoring (Admin only)
  */
-export const assignMediatorHandler = async (
+export const getAuditLogsHandler = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const adminUserId = req.user?.userId;
-    const disputeId = req.params.disputeId as string;
-    const { mediatorId } = req.body;
-
-    if (!adminUserId) {
-      res.status(401).json({
-        success: false,
-        error: {
-          code: 'UNAUTHORIZED',
-          message: 'Authentication required',
-        },
-      });
-      return;
-    }
-
-    if (!disputeId || !mediatorId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_INPUT',
-          message: 'disputeId URL parameter and mediatorId are required',
-        },
-      });
-      return;
-    }
-
-    const assignment = await assignMediator(disputeId, mediatorId, adminUserId);
+    const logs = await prisma.auditLog.findMany({
+      take: 100,
+      orderBy: { timestamp: 'desc' },
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true } },
+      },
+    });
 
     res.json({
       success: true,
-      assignment,
+      logs,
     });
-  } catch (error: any) {
-    if (error.statusCode) {
-      res.status(error.statusCode).json({
-        success: false,
-        error: {
-          code: error.code || 'ERROR',
-          message: error.message,
-        },
-      });
-      return;
-    }
+  } catch (error) {
     next(error);
   }
 };

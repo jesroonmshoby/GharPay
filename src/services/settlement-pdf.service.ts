@@ -20,8 +20,6 @@ export interface SettlementPdfData {
   tenantEmail: string;
   landlordName: string;
   landlordEmail: string;
-  mediatorName?: string | null;
-  mediatorEmail?: string | null;
   propertyAddress: string;
   securityDeposit: string;
   claimedDeduction: string;
@@ -126,9 +124,6 @@ export const generateSettlementPdf = async (
       doc.fontSize(9.5).font('Helvetica').fillColor('#333333');
       doc.text(`Tenant: ${data.tenantName} (${data.tenantEmail})`);
       doc.text(`Landlord: ${data.landlordName} (${data.landlordEmail})`);
-      if (data.mediatorName) {
-        doc.text(`Mediator: ${data.mediatorName}${data.mediatorEmail ? ` (${data.mediatorEmail})` : ''}`);
-      }
       doc.moveDown(0.6);
 
       // Section 3: Property Address

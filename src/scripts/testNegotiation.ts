@@ -259,7 +259,7 @@ async function main() {
   console.log(`✔ Audit log count: ${auditLogs.length}`);
   console.log('Sample Audit Actions logged:', auditLogs.map((a) => a.action));
 
-  // 14. Test Round 3 Limit & Mediator Review Referral Flow
+  // 14. Test Round 3 Limit & Unresolved Referral Flow
   console.log('\n--- Testing Round 3 Exhaustion Flow on a secondary dispute ---');
   const dispute2 = await prisma.dispute.create({
     data: {

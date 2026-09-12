@@ -15,7 +15,7 @@ import path from 'path';
 
 /**
  * POST /api/settlements/:disputeId
- * Creates settlement for a dispute (Assigned Mediator only)
+ * Creates settlement for a dispute (Tenant or Landlord)
  */
 export const createSettlementHandler = async (
   req: AuthenticatedRequest,
@@ -23,11 +23,11 @@ export const createSettlementHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const mediatorUserId = req.user?.userId;
+    const userId = req.user?.userId;
     const disputeId = req.params.disputeId as string;
     const { agreedDeduction } = req.body;
 
-    if (!mediatorUserId) {
+    if (!userId) {
       res.status(401).json({
         success: false,
         error: {
@@ -49,7 +49,7 @@ export const createSettlementHandler = async (
       return;
     }
 
-    const settlement = await createSettlement(disputeId, agreedDeduction, mediatorUserId);
+    const settlement = await createSettlement(disputeId, agreedDeduction, userId);
 
     res.status(201).json({
       success: true,
@@ -72,7 +72,7 @@ export const createSettlementHandler = async (
 
 /**
  * GET /api/settlements/:disputeId
- * Fetches settlement details for authorized users (Tenant, Landlord, Mediator, Admin)
+ * Fetches settlement details for authorized users (Tenant, Landlord, Admin)
  */
 export const getSettlementHandler = async (
   req: AuthenticatedRequest,
@@ -342,10 +342,9 @@ export const downloadPdfHandler = async (
     // Authorization check
     const isTenant = dispute.tenancy.tenantId === userId;
     const isLandlord = dispute.tenancy.landlordId === userId;
-    const isMediator = dispute.mediatorId === userId;
     const isAdmin = userRole === UserRole.ADMIN;
 
-    if (!isTenant && !isLandlord && !isMediator && !isAdmin) {
+    if (!isTenant && !isLandlord && !isAdmin) {
       res.status(403).json({
         success: false,
         error: {

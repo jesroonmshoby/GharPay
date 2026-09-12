@@ -386,7 +386,7 @@ export const moveToTenantReview = async (
  */
 export const startNegotiation = async (
   disputeId: string,
-  tenantId: string
+  userId: string
 ) => {
   const dispute = await prisma.dispute.findUnique({
     where: { id: disputeId },
@@ -400,7 +400,10 @@ export const startNegotiation = async (
     throw err;
   }
 
-  if (dispute.tenancy.tenantId !== tenantId) {
+  if (
+    dispute.tenancy.tenantId !== userId &&
+    dispute.tenancy.landlordId !== userId
+  ) {
     const err = new Error('You are not authorized to access this dispute');
     (err as any).statusCode = 403;
     (err as any).code = 'FORBIDDEN';
@@ -408,6 +411,7 @@ export const startNegotiation = async (
   }
 
   if (
+    dispute.status !== DisputeStatus.CALCULATED &&
     dispute.status !== DisputeStatus.TENANT_REVIEW &&
     dispute.status !== DisputeStatus.NEGOTIATION
   ) {
@@ -433,7 +437,7 @@ export const startNegotiation = async (
     await tx.auditLog.create({
       data: {
         disputeId,
-        userId: tenantId,
+        userId,
         action: AuditAction.CASE_SUBMITTED,
         metadata: {
           negotiationAction: 'NEGOTIATION_STARTED',
@@ -684,11 +688,11 @@ export const submitOffer = async (
             nextStatus: DisputeStatus.NEGOTIATION,
           };
         } else {
-          // Round 3 finished without agreement within threshold -> Move to MEDIATOR_REVIEW
+          // Round 3 finished without agreement within threshold -> Negotiation completes without agreement
           await tx.dispute.update({
             where: { id: dispute.id },
             data: {
-              status: DisputeStatus.MEDIATOR_REVIEW,
+              status: DisputeStatus.REJECTED,
               settlementEligible: false,
             },
           });
@@ -705,7 +709,7 @@ export const submitOffer = async (
                 difference: difference.toFixed(2),
                 threshold: threshold.toFixed(2),
                 settlementEligible: false,
-                outcome: 'MAX_ROUNDS_EXCEEDED_REFERRED_TO_MEDIATOR',
+                outcome: 'MAX_ROUNDS_EXCEEDED_UNRESOLVED',
               },
             },
           });
@@ -715,7 +719,7 @@ export const submitOffer = async (
             difference: difference.toFixed(2),
             threshold: threshold.toFixed(2),
             settlementEligible: false,
-            nextStatus: DisputeStatus.MEDIATOR_REVIEW,
+            nextStatus: DisputeStatus.REJECTED,
           };
         }
       }

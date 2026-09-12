@@ -15,8 +15,6 @@ import LandlordIntake from './pages/landlord/LandlordIntake';
 import LandlordDisputeDetail from './pages/landlord/LandlordDisputeDetail';
 import TenantDashboard from './pages/tenant/TenantDashboard';
 import TenantDisputeDetail from './pages/tenant/TenantDisputeDetail';
-import MediatorDashboard from './pages/mediator/MediatorDashboard';
-import MediatorCaseDetail from './pages/mediator/MediatorCaseDetail';
 import SettlementView from './pages/settlement/SettlementView';
 
 // Protected Route Wrapper Component
@@ -45,9 +43,6 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
         return <Navigate to="/landlord" replace />;
       case 'TENANT':
         return <Navigate to="/tenant" replace />;
-      case 'MEDIATOR':
-      case 'ADMIN':
-        return <Navigate to="/mediator" replace />;
       default:
         return <Navigate to="/" replace />;
     }
@@ -155,40 +150,6 @@ export default function App() {
                 element={
                   <ProtectedRoute allowedRoles={['TENANT']}>
                     <TenantDisputeDetail />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Mediator Protected Routes */}
-              <Route
-                path="/mediator"
-                element={
-                  <ProtectedRoute allowedRoles={['MEDIATOR', 'ADMIN']}>
-                    <MediatorDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/mediator/cases"
-                element={
-                  <ProtectedRoute allowedRoles={['MEDIATOR', 'ADMIN']}>
-                    <MediatorDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/mediator/cases/:id"
-                element={
-                  <ProtectedRoute allowedRoles={['MEDIATOR', 'ADMIN']}>
-                    <MediatorCaseDetail />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/mediator/dispute/:id"
-                element={
-                  <ProtectedRoute allowedRoles={['MEDIATOR', 'ADMIN']}>
-                    <MediatorCaseDetail />
                   </ProtectedRoute>
                 }
               />

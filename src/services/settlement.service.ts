@@ -37,12 +37,12 @@ export interface SettlementSummary {
 }
 
 /**
- * Creates a settlement for a dispute (Assigned Mediator only)
+ * Creates a settlement for a dispute (Tenant or Landlord)
  */
 export const createSettlement = async (
   disputeId: string,
   agreedDeductionRaw: number | string | Prisma.Decimal,
-  mediatorUserId: string
+  requestingUserId: string
 ): Promise<SettlementSummary> => {
   const agreedDeduction = new Prisma.Decimal(agreedDeductionRaw);
 
@@ -59,16 +59,18 @@ export const createSettlement = async (
       throw err;
     }
 
-    if (dispute.mediatorId !== mediatorUserId) {
-      const err = new Error('Only the assigned mediator can create the settlement');
+    const isTenant = dispute.tenancy.tenantId === requestingUserId;
+    const isLandlord = dispute.tenancy.landlordId === requestingUserId;
+    if (!isTenant && !isLandlord) {
+      const err = new Error('Only the tenant or landlord can initiate settlement');
       (err as any).statusCode = 403;
       (err as any).code = 'FORBIDDEN';
       throw err;
     }
 
-    if (dispute.status !== DisputeStatus.SETTLEMENT_PENDING) {
+    if (dispute.status !== DisputeStatus.SETTLEMENT_PENDING && dispute.status !== DisputeStatus.NEGOTIATION && dispute.status !== DisputeStatus.CALCULATED) {
       const err = new Error(
-        `Settlement can only be created when dispute is in SETTLEMENT_PENDING status (current: ${dispute.status})`
+        `Settlement cannot be created when dispute is in ${dispute.status} status`
       );
       (err as any).statusCode = 400;
       (err as any).code = 'INVALID_DISPUTE_STATUS';
@@ -166,7 +168,7 @@ export const createSettlement = async (
     await tx.auditLog.create({
       data: {
         disputeId: dispute.id,
-        userId: mediatorUserId,
+        userId: requestingUserId,
         action: AuditAction.SETTLEMENT_CREATED,
         metadata: {
           caseNumber: dispute.caseNumber,
@@ -199,7 +201,7 @@ export const createSettlement = async (
 };
 
 /**
- * Fetches settlement details for authorized users (Tenant, Landlord, Assigned Mediator, Admin)
+ * Fetches settlement details for authorized users (Tenant, Landlord, Admin)
  */
 export const getSettlement = async (
   disputeId: string,
@@ -228,10 +230,9 @@ export const getSettlement = async (
   // Authorization check
   const isTenant = dispute.tenancy.tenantId === requestingUserId;
   const isLandlord = dispute.tenancy.landlordId === requestingUserId;
-  const isMediator = dispute.mediatorId === requestingUserId;
   const isAdmin = requestingUserRole === UserRole.ADMIN;
 
-  if (!isTenant && !isLandlord && !isMediator && !isAdmin) {
+  if (!isTenant && !isLandlord && !isAdmin) {
     const err = new Error('You are not authorized to view this settlement');
     (err as any).statusCode = 403;
     (err as any).code = 'FORBIDDEN';
@@ -471,7 +472,6 @@ export const checkAndCompleteSettlement = async (disputeId: string, forceRegener
           tenant: { select: { name: true, email: true } },
         },
       },
-      mediator: { select: { name: true, email: true } },
       claims: true,
       settlement: true,
     },
@@ -542,8 +542,6 @@ export const checkAndCompleteSettlement = async (disputeId: string, forceRegener
         tenantEmail: dispute.tenancy.tenant.email,
         landlordName: dispute.tenancy.landlord.name,
         landlordEmail: dispute.tenancy.landlord.email,
-        mediatorName: dispute.mediator ? dispute.mediator.name : 'GharPay Mediator',
-        mediatorEmail: dispute.mediator ? dispute.mediator.email : null,
         propertyAddress: propertyAddrLines,
         securityDeposit: dispute.tenancy.securityDeposit.toFixed(2),
         claimedDeduction: dispute.claimedDeduction.toFixed(2),

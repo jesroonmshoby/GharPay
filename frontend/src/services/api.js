@@ -149,7 +149,7 @@ export const api = {
       }),
   },
 
-  // Dispute Actions (Outside Agreement, Court Case Application & Mediator Review Request)
+  // Dispute Actions (Outside Agreement & Court Case Application)
   disputeActions: {
     proposeOutsideAgreement: (disputeId) =>
       request(`/disputes/${disputeId}/outside-agreement/propose`, {
@@ -164,10 +164,6 @@ export const api = {
       request(`/disputes/${disputeId}/court-application`, {
         method: 'POST',
         body: JSON.stringify(data),
-      }),
-    requestMediatorReview: (disputeId) =>
-      request(`/disputes/${disputeId}/request-mediator-review`, {
-        method: 'POST',
       }),
   },
 
@@ -201,30 +197,9 @@ export const api = {
       }),
   },
 
-  // Mediator & Admin
-  mediator: {
-    getCases: () => request('/mediator/cases'),
-    getMyCases: () => request('/mediator/my-cases'),
-    getCase: (disputeId) => request(`/mediator/cases/${disputeId}`),
-    reviewCase: (disputeId) =>
-      request(`/mediator/cases/${disputeId}/review`, {
-        method: 'POST',
-      }),
-    reviewClaim: (claimId, data) =>
-      request(`/mediator/claims/${claimId}/review`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    submitRecommendation: (disputeId, data) =>
-      request(`/mediator/cases/${disputeId}/recommendation`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    assignMediator: (disputeId, mediatorId) =>
-      request(`/admin/disputes/${disputeId}/assign`, {
-        method: 'POST',
-        body: JSON.stringify({ mediatorId }),
-      }),
+  // Admin
+  admin: {
+    getAuditLogs: () => request('/admin/audit-logs'),
   },
 
   // Settlement
