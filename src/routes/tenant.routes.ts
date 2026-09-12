@@ -6,6 +6,11 @@ import {
   startNegotiationHandler,
   submitTenantOfferHandler,
 } from '../controllers/tenant.controller';
+import {
+  createTenantCommentHandler,
+  getTenantCommentsHandler,
+  uploadTenantProofHandler,
+} from '../controllers/tenantComment.controller';
 import { authenticateJwt, requireRole } from '../middleware/auth';
 import { UserRole } from '@prisma/client';
 
@@ -20,5 +25,10 @@ router.get('/disputes/:disputeId', getDisputeDetailsHandler);
 router.post('/disputes/:disputeId/review', reviewDisputeHandler);
 router.post('/disputes/:disputeId/negotiate', startNegotiationHandler);
 router.post('/disputes/:disputeId/offers', submitTenantOfferHandler);
+
+// Tenant Claim Comments & Proof Upload Endpoints
+router.post('/claims/:claimId/comments', createTenantCommentHandler);
+router.get('/claims/:claimId/comments', getTenantCommentsHandler);
+router.post('/proof/upload', uploadTenantProofHandler);
 
 export default router;

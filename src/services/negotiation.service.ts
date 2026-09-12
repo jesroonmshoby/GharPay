@@ -196,6 +196,13 @@ export const getTenantDisputeDetails = async (
       claims: {
         include: {
           evidence: true,
+          tenantComments: {
+            include: {
+              creator: { select: { id: true, name: true } },
+              attachments: true,
+            },
+            orderBy: { createdAt: 'asc' },
+          },
         },
       },
       offers: {
@@ -258,6 +265,19 @@ export const getTenantDisputeDetails = async (
         description: e.description,
         verificationStatus: e.verificationStatus,
       })),
+      tenantComments: c.tenantComments ? c.tenantComments.map((tc) => ({
+        id: tc.id,
+        message: tc.message,
+        createdAt: tc.createdAt,
+        createdBy: tc.creator ? { id: tc.creator.id, name: tc.creator.name } : null,
+        attachments: tc.attachments ? tc.attachments.map((a) => ({
+          id: a.id,
+          fileName: a.fileName,
+          fileType: a.fileType,
+          fileUrl: a.fileUrl,
+          createdAt: a.createdAt,
+        })) : [],
+      })) : [],
     })),
     offers: dispute.offers.map((o) => ({
       id: o.id,

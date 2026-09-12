@@ -793,17 +793,24 @@ export const getDisputeDetails = async (
       include: { tenancy: true; claims: { include: { evidence: true } } };
     }>;
 
-    const dispute = (await prisma.dispute.findUnique({
+    const dispute = await prisma.dispute.findUnique({
       where: { id: disputeId },
       include: {
         tenancy: true,
         claims: {
           include: {
             evidence: true,
+            tenantComments: {
+              include: {
+                creator: { select: { id: true, name: true } },
+                attachments: true,
+              },
+              orderBy: { createdAt: 'asc' },
+            },
           },
         },
       },
-    })) as DisputeFull | null;
+    });
 
     if (!dispute) {
       res.status(404).json({
@@ -853,6 +860,19 @@ export const getDisputeDetails = async (
             description: ev.description,
             verificationStatus: ev.verificationStatus,
           })),
+          tenantComments: (claim as any).tenantComments ? (claim as any).tenantComments.map((tc: any) => ({
+            id: tc.id,
+            message: tc.message,
+            createdAt: tc.createdAt,
+            createdBy: tc.creator ? { id: tc.creator.id, name: tc.creator.name } : null,
+            attachments: tc.attachments ? tc.attachments.map((a: any) => ({
+              id: a.id,
+              fileName: a.fileName,
+              fileType: a.fileType,
+              fileUrl: a.fileUrl,
+              createdAt: a.createdAt,
+            })) : [],
+          })) : [],
         })),
       },
     });

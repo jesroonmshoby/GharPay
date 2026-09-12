@@ -162,6 +162,17 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    submitClaimComment: (claimId, data) =>
+      request(`/tenant/claims/${claimId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getClaimComments: (claimId) => request(`/tenant/claims/${claimId}/comments`),
+    uploadProof: (data) =>
+      request('/tenant/proof/upload', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
 
   // Mediator & Admin

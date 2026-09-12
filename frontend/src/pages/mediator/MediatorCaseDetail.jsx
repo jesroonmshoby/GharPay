@@ -13,6 +13,8 @@ import {
   Shield,
   Award,
   PlusCircle,
+  MessageSquare,
+  Paperclip,
 } from 'lucide-react';
 
 export const MediatorCaseDetail = () => {
@@ -310,6 +312,44 @@ export const MediatorCaseDetail = () => {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Tenant Response View for Mediator */}
+              {c.tenantComments && c.tenantComments.length > 0 && (
+                <div className="pt-2 border-t border-[#E5E5E5]/60 space-y-1.5">
+                  <span className="text-xs font-bold text-[#505423] uppercase tracking-wider flex items-center space-x-1">
+                    <MessageSquare className="w-3.5 h-3.5 text-[#B68400]" />
+                    <span>Tenant Response</span>
+                  </span>
+                  {c.tenantComments.map((tc) => (
+                    <div key={tc.id} className="bg-[#FFFDF5] border border-[#B68400]/30 p-3 rounded-xl space-y-1 text-xs">
+                      <div className="flex justify-between items-center text-[11px] text-[#737373]">
+                        <span className="font-bold text-[#111111]">{tc.createdBy?.name || 'Tenant'}</span>
+                        <span>{formatDate(tc.createdAt)}</span>
+                      </div>
+                      <p className="text-[#111111] font-medium leading-relaxed">
+                        "{tc.message}"
+                      </p>
+                      {tc.attachments && tc.attachments.length > 0 && (
+                        <div className="pt-1.5 flex flex-wrap gap-2">
+                          <span className="text-[11px] font-bold text-[#737373]">Proof attached:</span>
+                          {tc.attachments.map((att) => (
+                            <a
+                              key={att.id}
+                              href={att.fileUrl.startsWith('http') ? att.fileUrl : `http://localhost:4000${att.fileUrl}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center space-x-1 text-[11px] font-bold text-[#505423] hover:text-[#B68400] bg-white border border-[#E5E5E5] px-2 py-0.5 rounded-md"
+                            >
+                              <Paperclip className="w-3 h-3 text-[#B68400]" />
+                              <span>{att.fileName}</span>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

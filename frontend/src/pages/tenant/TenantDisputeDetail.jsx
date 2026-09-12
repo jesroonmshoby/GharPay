@@ -14,6 +14,10 @@ import {
   Download,
   FileCheck,
   Award,
+  Plus,
+  Paperclip,
+  X,
+  Send,
 } from 'lucide-react';
 
 export const TenantDisputeDetail = () => {
@@ -23,6 +27,12 @@ export const TenantDisputeDetail = () => {
   const [settlement, setSettlement] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // Tenant Claim Response State
+  const [activeCommentClaimId, setActiveCommentClaimId] = useState(null);
+  const [commentMessageInput, setCommentMessageInput] = useState('');
+  const [selectedProofFiles, setSelectedProofFiles] = useState([]);
+  const [submittingComment, setSubmittingComment] = useState(false);
 
   // Tenant offer form state
   const [tenantOfferAmount, setTenantOfferAmount] = useState('26000');
@@ -47,6 +57,68 @@ export const TenantDisputeDetail = () => {
       showError(err.message || 'Failed to load dispute details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    const validFiles = files.filter((f) => {
+      const ext = f.name.split('.').pop().toLowerCase();
+      return ['pdf', 'jpg', 'jpeg', 'png', 'webp'].includes(ext) && f.size <= 5 * 1024 * 1024;
+    });
+    if (validFiles.length < files.length) {
+      showError('Some files were ignored. Only PDF, JPG, PNG, WEBP files up to 5MB are supported.');
+    }
+    setSelectedProofFiles((prev) => [...prev, ...validFiles]);
+  };
+
+  const handleRemoveFile = (index) => {
+    setSelectedProofFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCommentSubmit = async (claimId) => {
+    if (!commentMessageInput || !commentMessageInput.trim()) {
+      showError('Please enter a response message.');
+      return;
+    }
+
+    setSubmittingComment(true);
+    try {
+      const uploadedAttachments = [];
+      for (const file of selectedProofFiles) {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const uploadRes = await api.tenant.uploadProof({
+          fileName: file.name,
+          fileData: base64,
+        });
+
+        uploadedAttachments.push({
+          fileName: uploadRes.fileName,
+          fileType: uploadRes.fileType,
+          fileUrl: uploadRes.fileUrl,
+        });
+      }
+
+      await api.tenant.submitClaimComment(claimId, {
+        message: commentMessageInput.trim(),
+        attachments: uploadedAttachments,
+      });
+
+      showSuccess('Response submitted successfully.');
+      setActiveCommentClaimId(null);
+      setCommentMessageInput('');
+      setSelectedProofFiles([]);
+      await fetchDisputeDetails();
+    } catch (err) {
+      showError(err.message || 'Failed to submit response');
+    } finally {
+      setSubmittingComment(false);
     }
   };
 
@@ -289,6 +361,154 @@ export const TenantDisputeDetail = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Tenant Response / Proof Section */}
+                <div className="pt-3 border-t border-[#E5E5E5]/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-[#111111] uppercase tracking-wider">
+                      Your Response
+                    </span>
+                    {(!c.tenantComments || c.tenantComments.length === 0) && activeCommentClaimId !== c.id && (
+                      <button
+                        onClick={() => {
+                          setActiveCommentClaimId(c.id);
+                          setCommentMessageInput('');
+                          setSelectedProofFiles([]);
+                        }}
+                        className="inline-flex items-center space-x-1 text-xs font-bold text-[#1B8E13] hover:underline"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add response</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Display Existing Responses */}
+                  {c.tenantComments && c.tenantComments.length > 0 && (
+                    <div className="space-y-3">
+                      {c.tenantComments.map((tc) => (
+                        <div key={tc.id} className="bg-[#F7F7F5] border border-[#E5E5E5] p-3.5 rounded-xl space-y-2 text-xs">
+                          <div className="flex items-center justify-between text-[#1B8E13] font-bold">
+                            <div className="flex items-center space-x-1.5">
+                              <CheckCircle className="w-4 h-4" />
+                              <span>✓ Response submitted</span>
+                            </div>
+                            <span className="text-[11px] text-[#737373] font-normal">
+                              {formatDate(tc.createdAt)}
+                            </span>
+                          </div>
+
+                          <p className="text-[#111111] font-medium leading-relaxed">
+                            "{tc.message}"
+                          </p>
+
+                          {tc.attachments && tc.attachments.length > 0 && (
+                            <div className="pt-2 border-t border-[#E5E5E5]/60 space-y-1">
+                              <span className="text-[11px] font-bold text-[#737373] block">
+                                Proof Attached ({tc.attachments.length}):
+                              </span>
+                              <div className="flex flex-wrap gap-2">
+                                {tc.attachments.map((att) => (
+                                  <a
+                                    key={att.id}
+                                    href={att.fileUrl.startsWith('http') ? att.fileUrl : `http://localhost:4000${att.fileUrl}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center space-x-1.5 text-[11px] font-bold text-[#505423] hover:text-[#B68400] bg-white border border-[#E5E5E5] px-2.5 py-1 rounded-lg"
+                                  >
+                                    <Paperclip className="w-3 h-3 text-[#B68400]" />
+                                    <span>{att.fileName}</span>
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add Response Interactive Form */}
+                  {activeCommentClaimId === c.id && (
+                    <div className="bg-[#FFFDF5] border border-[#B68400]/40 p-4 rounded-xl space-y-3">
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-xs font-bold text-[#111111] uppercase">Provide Your Response & Context</h4>
+                        <button
+                          type="button"
+                          onClick={() => setActiveCommentClaimId(null)}
+                          className="text-xs font-bold text-[#737373] hover:text-[#111111]"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-[#111111] mb-1">Your Response</label>
+                        <textarea
+                          rows={3}
+                          value={commentMessageInput}
+                          onChange={(e) => setCommentMessageInput(e.target.value)}
+                          placeholder="e.g. I disagree with this deduction because the wall damage existed before my tenancy."
+                          className="w-full p-2.5 border border-[#E5E5E5] rounded-xl text-xs text-[#111111]"
+                        />
+                      </div>
+
+                      {/* File Attachment Control */}
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <label className="cursor-pointer inline-flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-[#E5E5E5] hover:bg-[#F7F7F5] rounded-lg text-xs font-bold text-[#505423]">
+                            <Paperclip className="w-3.5 h-3.5 text-[#B68400]" />
+                            <span>+ Attach proof</span>
+                            <input
+                              type="file"
+                              multiple
+                              accept=".pdf,.jpg,.jpeg,.png,.webp"
+                              onChange={handleFileSelect}
+                              className="hidden"
+                            />
+                          </label>
+                          <span className="text-[11px] text-[#737373]">Allowed: JPG, PNG, PDF, WEBP (Max 5MB)</span>
+                        </div>
+
+                        {selectedProofFiles.length > 0 && (
+                          <div className="space-y-1">
+                            {selectedProofFiles.map((file, idx) => (
+                              <div key={idx} className="flex items-center justify-between bg-white px-2.5 py-1 border border-[#E5E5E5] rounded-md text-xs">
+                                <span className="truncate text-[#111111] font-medium">{file.name} ({(file.size / 1024).toFixed(0)} KB)</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFile(idx)}
+                                  className="text-red-600 hover:text-red-800 ml-2"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => handleCommentSubmit(c.id)}
+                          disabled={submittingComment}
+                          className="px-4 py-2 bg-[#B68400] hover:bg-[#966d00] text-white font-bold text-xs rounded-xl shadow transition disabled:opacity-50 flex items-center space-x-1"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>{submittingComment ? 'Submitting...' : 'Submit response'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveCommentClaimId(null)}
+                          className="px-4 py-2 bg-white border border-[#E5E5E5] text-[#737373] hover:text-[#111111] font-bold text-xs rounded-xl"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             ))
 
