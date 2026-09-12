@@ -6,6 +6,7 @@ import {
   getLandlordDisputesHandler,
   createClaim,
   deleteClaim,
+  deleteDisputeHandler,
   getClaims,
   createEvidence,
   uploadEvidenceFileHandler,
@@ -23,6 +24,7 @@ router.use(authenticateJwt);
 router.use(requireRole([UserRole.LANDLORD]));
 
 router.get('/disputes', getLandlordDisputesHandler);
+router.delete('/disputes/:disputeId', deleteDisputeHandler);
 router.post('/properties', createProperty);
 router.post('/tenancies', createTenancy);
 router.post('/disputes', createDispute);

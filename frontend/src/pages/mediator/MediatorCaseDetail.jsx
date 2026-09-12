@@ -12,23 +12,30 @@ import {
   ArrowRight,
   Shield,
   Award,
-  PlusCircle,
-  MessageSquare,
-  Paperclip,
+  Check,
+  XCircle,
+  HelpCircle,
+  Edit3,
 } from 'lucide-react';
+
+import SettlementFlowCard from '../../components/common/SettlementFlowCard';
 
 export const MediatorCaseDetail = () => {
   const { id } = useParams();
   const { showSuccess, showError } = useNotification();
   const [caseData, setCaseData] = useState(null);
+  const [settlement, setSettlement] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   // Recommendation State
   const [recommendationNote, setRecommendationNote] = useState('');
 
-  // Create Settlement Form State
-  const [agreedDeduction, setAgreedDeduction] = useState('26500');
+  // Individual Claim Review Active Forms State
+  const [activeClaimReviewId, setActiveClaimReviewId] = useState(null);
+  const [reviewStatus, setReviewStatus] = useState('APPROVED');
+  const [approvedAmountInput, setApprovedAmountInput] = useState('');
+  const [reviewNoteInput, setReviewNoteInput] = useState('');
 
   useEffect(() => {
     fetchCaseDetails();
@@ -39,6 +46,12 @@ export const MediatorCaseDetail = () => {
     try {
       const res = await api.mediator.getCase(id);
       setCaseData(res.caseDetails);
+      const sRes = await api.settlement.getSettlement(id).catch(() => null);
+      if (sRes && sRes.settlement) {
+        setSettlement(sRes.settlement);
+      } else {
+        setSettlement(null);
+      }
     } catch (err) {
       showError(err.message || 'Failed to load mediator case details');
     } finally {
@@ -50,10 +63,35 @@ export const MediatorCaseDetail = () => {
     setSubmitting(true);
     try {
       await api.mediator.reviewCase(id);
-      showSuccess('Case review action logged successfully.');
+      showSuccess('Case review action logged successfully by Priya Menon.');
       await fetchCaseDetails();
     } catch (err) {
       showError(err.message || 'Failed to log review');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleClaimReviewSubmit = async (claim) => {
+    setSubmitting(true);
+    try {
+      const payload = {
+        status: reviewStatus,
+        reviewNote: reviewNoteInput,
+      };
+
+      if (reviewStatus === 'PARTIAL') {
+        payload.approvedAmount = parseFloat(approvedAmountInput);
+      }
+
+      await api.mediator.reviewClaim(claim.id, payload);
+      showSuccess(`Claim "${claim.category}" reviewed: ${reviewStatus}`);
+      setActiveClaimReviewId(null);
+      setReviewNoteInput('');
+      setApprovedAmountInput('');
+      await fetchCaseDetails();
+    } catch (err) {
+      showError(err.message || 'Failed to update claim review');
     } finally {
       setSubmitting(false);
     }
@@ -66,26 +104,10 @@ export const MediatorCaseDetail = () => {
         recommendation: recommendationType,
         note: recommendationNote,
       });
-      showSuccess(`Recommendation ${recommendationType} recorded.`);
+      showSuccess(`Mediator recommendation recorded: ${recommendationType}`);
       await fetchCaseDetails();
     } catch (err) {
       showError(err.message || 'Failed to submit recommendation');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleCreateSettlement = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      const res = await api.settlement.createSettlement(id, {
-        agreedDeduction: parseFloat(agreedDeduction),
-      });
-      showSuccess(`Settlement created successfully.`);
-      await fetchCaseDetails();
-    } catch (err) {
-      showError(err.message || 'Failed to create settlement');
     } finally {
       setSubmitting(false);
     }
@@ -112,11 +134,19 @@ export const MediatorCaseDetail = () => {
     );
   }
 
-  const { dispute, tenancy, landlord, tenant, claims, offers } = caseData;
+  const { dispute, tenancy, landlord, tenant, claims, offers, mediator } = caseData;
+  const mediatorName = mediator ? mediator.name : 'Priya Menon';
+
+  const pendingClaims = claims.filter(
+    (c) => c.status === 'PENDING' || c.status === 'NEEDS_CLARIFICATION'
+  );
+  const reviewedClaims = claims.filter(
+    (c) => c.status !== 'PENDING' && c.status !== 'NEEDS_CLARIFICATION'
+  );
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Top Banner */}
+      {/* Header Banner */}
       <div className="bg-white p-6 rounded-2xl border border-[#E5E5E5] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-3">
@@ -128,233 +158,284 @@ export const MediatorCaseDetail = () => {
             </span>
           </div>
           <p className="text-xs text-[#737373] mt-1">
-            Landlord: <strong className="text-[#111111]">{landlord.name}</strong> | Tenant: <strong className="text-[#111111]">{tenant.name}</strong>
+            Landlord: <strong className="text-[#111111]">{landlord.name}</strong> ({landlord.email}) | Tenant: <strong className="text-[#111111]">{tenant.name}</strong> ({tenant.email})
+          </p>
+          <p className="text-xs text-[#505423] font-semibold mt-1">
+            Assigned Mediator: <strong>{mediatorName}</strong>
           </p>
         </div>
 
-        {/* Log Review Button */}
         <div className="flex items-center space-x-3">
           <button
             onClick={handleLogReview}
             disabled={submitting}
             className="bg-[#505423] hover:bg-[#3f421b] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all disabled:opacity-50"
           >
-            Log Mediator Case Review
+            Log Mediator Review Timestamp
           </button>
         </div>
       </div>
 
-      {/* Case Metrics Row */}
+      {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-[#E5E5E5] shadow-sm">
           <span className="text-xs font-semibold text-[#737373] uppercase tracking-wider block">Security Deposit</span>
           <span className="text-xl font-extrabold text-[#111111] mt-1 block">{formatINR(dispute.totalDeposit)}</span>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-[#E5E5E5] shadow-sm">
-          <span className="text-xs font-semibold text-[#737373] uppercase tracking-wider block">Calculated Deduction</span>
-          <span className="text-xl font-extrabold text-[#1B8E13] mt-1 block">{dispute.calculatedDeduction ? formatINR(dispute.calculatedDeduction) : 'N/A'}</span>
+          <span className="text-xs font-semibold text-[#737373] uppercase tracking-wider block">Claimed Deduction</span>
+          <span className="text-xl font-extrabold text-[#B68400] mt-1 block">{formatINR(dispute.claimedDeduction)}</span>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-[#E5E5E5] shadow-sm">
-          <span className="text-xs font-semibold text-[#737373] uppercase tracking-wider block">Offers (L vs T)</span>
-          <span className="text-sm font-bold text-[#111111] mt-1 block">
-            {dispute.landlordOffer ? formatINR(dispute.landlordOffer) : 'None'} vs {dispute.tenantOffer ? formatINR(dispute.tenantOffer) : 'None'}
-          </span>
+          <span className="text-xs font-semibold text-[#737373] uppercase tracking-wider block">Reviewed Calculated</span>
+          <span className="text-xl font-extrabold text-[#1B8E13] mt-1 block">{dispute.calculatedDeduction ? formatINR(dispute.calculatedDeduction) : 'Awaiting Review'}</span>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-[#E5E5E5] shadow-sm">
-          <span className="text-xs font-semibold text-[#737373] uppercase tracking-wider block">Settlement Threshold</span>
+          <span className="text-xs font-semibold text-[#737373] uppercase tracking-wider block">Settlement Eligibility</span>
           <span className={`text-xs font-bold px-2.5 py-1 rounded-full inline-block mt-1 ${dispute.settlementEligible ? 'bg-[#1B8E13]/15 text-[#1B8E13]' : 'bg-amber-50 text-amber-800'}`}>
-            {dispute.settlementEligible ? '✓ Eligible (Within 5%)' : 'Outside 5% threshold'}
+            {dispute.settlementEligible ? '✓ Eligible' : 'In Progress'}
           </span>
         </div>
       </div>
 
-      {/* Mediator Structured Recommendation Actions */}
-      <div className="bg-white rounded-2xl border border-[#E5E5E5] p-6 space-y-4 shadow-sm">
-        <h2 className="text-base font-extrabold text-[#111111] flex items-center space-x-2">
-          <Scale className="w-5 h-5 text-[#505423]" />
-          <span>Structured Mediator Recommendation</span>
-        </h2>
+      {/* Prominent Settlement Flow Card */}
+      <SettlementFlowCard
+        dispute={dispute}
+        settlement={settlement}
+        userRole="MEDIATOR"
+        onRefresh={fetchCaseDetails}
+      />
 
-        <div>
-          <label className="block text-xs font-semibold text-[#737373] mb-1">
-            Recommendation Notes / Summary (Optional)
-          </label>
-          <input
-            type="text"
-            value={recommendationNote}
-            onChange={(e) => setRecommendationNote(e.target.value)}
-            className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs text-[#111111]"
-            placeholder="e.g. Parties are within the configured 5% GharPay settlement threshold."
-          />
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-          <button
-            type="button"
-            onClick={() => handleRecommendation('READY_FOR_SETTLEMENT')}
-            disabled={submitting}
-            className="py-2.5 px-3 bg-[#1B8E13] hover:bg-[#15700f] text-white text-xs font-bold rounded-xl shadow-sm transition-all disabled:opacity-50 text-center"
-          >
-            Ready for Settlement
-          </button>
-          <button
-            type="button"
-            onClick={() => handleRecommendation('CONTINUE_NEGOTIATION')}
-            disabled={submitting}
-            className="py-2.5 px-3 bg-[#B68400] hover:bg-[#966d00] text-white text-xs font-bold rounded-xl shadow-sm transition-all disabled:opacity-50 text-center"
-          >
-            Continue Negotiation
-          </button>
-          <button
-            type="button"
-            onClick={() => handleRecommendation('NEEDS_CLARIFICATION')}
-            disabled={submitting}
-            className="py-2.5 px-3 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all disabled:opacity-50 text-center"
-          >
-            Needs Clarification
-          </button>
-          <button
-            type="button"
-            onClick={() => handleRecommendation('INSUFFICIENT_EVIDENCE')}
-            disabled={submitting}
-            className="py-2.5 px-3 bg-gray-700 hover:bg-gray-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all disabled:opacity-50 text-center"
-          >
-            Insufficient Evidence
-          </button>
-        </div>
-      </div>
-
-      {/* Create Settlement Form (When status is SETTLEMENT_PENDING) */}
-      {dispute.status === 'SETTLEMENT_PENDING' && (
-        <form onSubmit={handleCreateSettlement} className="bg-white rounded-2xl border border-[#1B8E13] p-6 space-y-4 shadow-sm">
-          <h2 className="text-base font-extrabold text-[#111111] flex items-center space-x-2">
-            <Award className="w-5 h-5 text-[#1B8E13]" />
-            <span>Prepare Settlement Terms (Assigned Mediator)</span>
-          </h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-[#111111] mb-1">
-                Agreed Deduction Amount (₹)
-              </label>
-              <input
-                type="number"
-                required
-                value={agreedDeduction}
-                onChange={(e) => setAgreedDeduction(e.target.value)}
-                className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs text-[#111111]"
-                placeholder="26500"
-              />
-              <p className="text-[10px] text-[#737373] mt-1">
-                Must be bounded between Tenant offer ({formatINR(dispute.tenantOffer)}) and Landlord offer ({formatINR(dispute.landlordOffer)}).
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#737373] mb-1">
-                Calculated Tenant Refund Amount
-              </label>
-              <div className="p-2.5 bg-[#F7F7F5] rounded-xl text-sm font-extrabold text-[#1B8E13] border border-[#E5E5E5]">
-                {formatINR(parseFloat(dispute.totalDeposit) - (parseFloat(agreedDeduction) || 0))}
-              </div>
-            </div>
+      {/* SECTION 1: Claims Awaiting Mediator Review */}
+      <div className="bg-white rounded-2xl border border-[#E5E5E5] shadow-sm overflow-hidden space-y-4">
+        <div className="p-6 border-b border-[#E5E5E5] bg-[#F7F7F5] flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-extrabold text-[#111111] flex items-center space-x-2">
+              <Scale className="w-5 h-5 text-[#505423]" />
+              <span>Claims Awaiting Review ({pendingClaims.length})</span>
+            </h2>
+            <p className="text-xs text-[#737373] mt-0.5">
+              Review each claim individually before final calculation can run.
+            </p>
           </div>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="py-3 px-6 bg-[#1B8E13] hover:bg-[#15700f] text-white text-xs font-bold rounded-xl shadow-md transition-all disabled:opacity-50"
-          >
-            Create Settlement Record
-          </button>
-        </form>
-      )}
-
-      {/* Claims List Breakdown */}
-      <div className="bg-white rounded-2xl border border-[#E5E5E5] shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-[#E5E5E5]">
-          <h2 className="text-base font-extrabold text-[#111111]">Claims & Evidence Audit View</h2>
+          {pendingClaims.length === 0 && (
+            <span className="text-xs font-bold bg-[#1B8E13]/15 text-[#1B8E13] px-3 py-1 rounded-full">
+              ✓ All Claims Reviewed
+            </span>
+          )}
         </div>
-        <div className="divide-y divide-[#E5E5E5]">
-          {claims && claims.map((c) => (
-            <div key={c.id} className="p-6 space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold uppercase text-[#B68400]">{c.category} - {c.description}</span>
-                <span className="text-xs font-bold text-[#1B8E13]">Claimed: {formatINR(c.claimedAmount)} | Approved: {c.approvedAmount ? formatINR(c.approvedAmount) : 'N/A'}</span>
-              </div>
-              {c.calculationExplanation && (
-                <p className="text-xs text-[#737373] bg-[#F7F7F5] p-2.5 rounded-lg border border-[#E5E5E5]">
-                  {c.calculationExplanation}
-                </p>
-              )}
-              {c.evidence && c.evidence.length > 0 && (
-                <div className="pt-2 border-t border-[#E5E5E5]/60 space-y-1">
-                  <span className="text-xs font-bold text-[#111111] block">
-                    Attached Evidence ({c.evidence.length}):
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {c.evidence.map((ev) => (
-                      <div key={ev.id} className="bg-[#F7F7F5] border border-[#E5E5E5] p-2 rounded-lg flex items-center justify-between text-xs">
-                        <div className="truncate pr-2">
-                          <span className="text-[9px] font-bold uppercase text-[#505423] block">{ev.type}</span>
-                          <span className="font-medium text-[#111111] block truncate">{ev.description || 'Evidence Document'}</span>
-                        </div>
-                        {ev.fileUrl && (
-                          <a
-                            href={ev.fileUrl.startsWith('http') ? ev.fileUrl : `http://localhost:4000${ev.fileUrl}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[11px] font-bold text-[#B68400] hover:underline bg-white border border-[#E5E5E5] px-2 py-0.5 rounded flex-shrink-0"
-                          >
-                            View
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
-              {/* Tenant Response View for Mediator */}
-              {c.tenantComments && c.tenantComments.length > 0 && (
-                <div className="pt-2 border-t border-[#E5E5E5]/60 space-y-1.5">
-                  <span className="text-xs font-bold text-[#505423] uppercase tracking-wider flex items-center space-x-1">
-                    <MessageSquare className="w-3.5 h-3.5 text-[#B68400]" />
-                    <span>Tenant Response</span>
-                  </span>
-                  {c.tenantComments.map((tc) => (
-                    <div key={tc.id} className="bg-[#FFFDF5] border border-[#B68400]/30 p-3 rounded-xl space-y-1 text-xs">
-                      <div className="flex justify-between items-center text-[11px] text-[#737373]">
-                        <span className="font-bold text-[#111111]">{tc.createdBy?.name || 'Tenant'}</span>
-                        <span>{formatDate(tc.createdAt)}</span>
+        <div className="divide-y divide-[#E5E5E5]">
+          {claims && claims.length === 0 ? (
+            <div className="p-6 text-center text-xs text-[#737373]">
+              No claims created for this dispute case yet.
+            </div>
+          ) : (
+            claims.map((c) => {
+              const isPending = c.status === 'PENDING' || c.status === 'NEEDS_CLARIFICATION';
+              const isEditing = activeClaimReviewId === c.id;
+
+              return (
+                <div key={c.id} className="p-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-extrabold uppercase text-[#B68400] px-2.5 py-0.5 bg-[#B68400]/10 rounded">
+                          {c.category}
+                        </span>
+                        <h3 className="text-sm font-bold text-[#111111]">{c.description}</h3>
                       </div>
-                      <p className="text-[#111111] font-medium leading-relaxed">
-                        "{tc.message}"
+                      <p className="text-xs text-[#737373] mt-1">
+                        Claimed Amount: <strong className="text-[#111111]">{formatINR(c.claimedAmount)}</strong>
                       </p>
-                      {tc.attachments && tc.attachments.length > 0 && (
-                        <div className="pt-1.5 flex flex-wrap gap-2">
-                          <span className="text-[11px] font-bold text-[#737373]">Proof attached:</span>
-                          {tc.attachments.map((att) => (
-                            <a
-                              key={att.id}
-                              href={att.fileUrl.startsWith('http') ? att.fileUrl : `http://localhost:4000${att.fileUrl}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center space-x-1 text-[11px] font-bold text-[#505423] hover:text-[#B68400] bg-white border border-[#E5E5E5] px-2 py-0.5 rounded-md"
-                            >
-                              <Paperclip className="w-3 h-3 text-[#B68400]" />
-                              <span>{att.fileName}</span>
-                            </a>
-                          ))}
-                        </div>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <span className={`text-xs font-extrabold px-3 py-1 rounded-full ${
+                        c.status === 'APPROVED' ? 'bg-[#1B8E13]/15 text-[#1B8E13]' :
+                        c.status === 'PARTIAL' ? 'bg-amber-100 text-amber-800' :
+                        c.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                        'bg-blue-50 text-blue-800'
+                      }`}>
+                        {c.status === 'PENDING' ? 'Awaiting Mediator Review' : c.status}
+                      </span>
+
+                      {!isEditing && (
+                        <button
+                          onClick={() => {
+                            setActiveClaimReviewId(c.id);
+                            setReviewStatus('APPROVED');
+                            setApprovedAmountInput(c.claimedAmount);
+                            setReviewNoteInput(c.mediatorReviewNote || '');
+                          }}
+                          className="text-xs font-bold text-[#505423] hover:underline flex items-center space-x-1"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>{isPending ? 'Review Claim' : 'Edit Review'}</span>
+                        </button>
                       )}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+                  </div>
 
+                  {/* Evidence Section */}
+                  {c.evidence && c.evidence.length > 0 ? (
+                    <div className="bg-[#F7F7F5] border border-[#E5E5E5] p-3 rounded-xl space-y-2">
+                      <span className="text-xs font-bold text-[#111111] block">
+                        Supporting Evidence ({c.evidence.length} files attached):
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {c.evidence.map((ev) => (
+                          <div key={ev.id} className="bg-white border border-[#E5E5E5] p-2.5 rounded-lg flex items-center justify-between text-xs">
+                            <div className="truncate pr-2">
+                              <span className="text-[9px] font-bold uppercase text-[#505423] block">{ev.type}</span>
+                              <span className="font-medium text-[#111111] truncate block">{ev.description || 'Uploaded Document'}</span>
+                            </div>
+                            {ev.fileUrl && (
+                              <a
+                                href={ev.fileUrl.startsWith('http') ? ev.fileUrl : `http://localhost:4000${ev.fileUrl}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] font-bold text-[#B68400] hover:underline bg-[#F7F7F5] border border-[#E5E5E5] px-2 py-1 rounded flex-shrink-0"
+                              >
+                                View Evidence
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-[#737373] italic">
+                      No supporting evidence files attached.
+                    </div>
+                  )}
+
+                  {/* Mediator Review Status Badge */}
+                  {!isPending && !isEditing && (
+                    <div className="bg-[#1B8E13]/5 border border-[#1B8E13]/20 p-3 rounded-xl space-y-1">
+                      <div className="flex items-center space-x-2 text-xs font-bold text-[#1B8E13]">
+                        <Check className="w-4 h-4" />
+                        <span>Reviewed by {mediatorName}</span>
+                        {c.mediatorReviewedAt && (
+                          <span className="text-[#737373] font-normal">on {formatDate(c.mediatorReviewedAt)}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-[#111111]">
+                        Decision: <strong>{c.status}</strong> | Approved Amount: <strong>{formatINR(c.approvedAmount || 0)}</strong>
+                      </p>
+                      {c.mediatorReviewNote && (
+                        <p className="text-xs text-[#737373] italic">
+                          Mediator Note: "{c.mediatorReviewNote}"
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Interactive Claim Review Form */}
+                  {isEditing && (
+                    <div className="bg-[#505423]/5 border border-[#505423]/20 p-4 rounded-xl space-y-4">
+                      <h4 className="text-xs font-extrabold text-[#505423] uppercase tracking-wider">
+                        Mediator Claim Review Form
+                      </h4>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReviewStatus('APPROVED');
+                            setApprovedAmountInput(c.claimedAmount);
+                          }}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            reviewStatus === 'APPROVED' ? 'bg-[#1B8E13] text-white border-[#1B8E13]' : 'bg-white text-[#111111] border-[#E5E5E5]'
+                          }`}
+                        >
+                          Approve ({formatINR(c.claimedAmount)})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReviewStatus('PARTIAL')}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            reviewStatus === 'PARTIAL' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-[#111111] border-[#E5E5E5]'
+                          }`}
+                        >
+                          Partially Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReviewStatus('REJECTED');
+                            setApprovedAmountInput('0');
+                          }}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            reviewStatus === 'REJECTED' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-[#111111] border-[#E5E5E5]'
+                          }`}
+                        >
+                          Reject (₹0)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReviewStatus('NEEDS_CLARIFICATION')}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            reviewStatus === 'NEEDS_CLARIFICATION' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-[#111111] border-[#E5E5E5]'
+                          }`}
+                        >
+                          Request Clarification
+                        </button>
+                      </div>
+
+                      {reviewStatus === 'PARTIAL' && (
+                        <div>
+                          <label className="block text-xs font-semibold text-[#111111] mb-1">
+                            Approved Amount (₹)
+                          </label>
+                          <input
+                            type="number"
+                            value={approvedAmountInput}
+                            onChange={(e) => setApprovedAmountInput(e.target.value)}
+                            max={c.claimedAmount}
+                            min="0"
+                            className="w-full sm:w-1/2 px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs text-[#111111]"
+                            placeholder={`Max ₹${c.claimedAmount}`}
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-xs font-semibold text-[#111111] mb-1">
+                          Mediator Review Explanation / Note
+                        </label>
+                        <input
+                          type="text"
+                          value={reviewNoteInput}
+                          onChange={(e) => setReviewNoteInput(e.target.value)}
+                          className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl text-xs text-[#111111]"
+                          placeholder="Provide mediator review rationale..."
+                        />
+                      </div>
+
+                      <div className="flex items-center space-x-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => handleClaimReviewSubmit(c)}
+                          disabled={submitting}
+                          className="py-2 px-4 bg-[#505423] hover:bg-[#3f421b] text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-50"
+                        >
+                          Save Claim Review
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveClaimReviewId(null)}
+                          className="py-2 px-4 bg-white border border-[#E5E5E5] text-[#111111] text-xs font-bold rounded-xl"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>
@@ -362,4 +443,3 @@ export const MediatorCaseDetail = () => {
 };
 
 export default MediatorCaseDetail;
-

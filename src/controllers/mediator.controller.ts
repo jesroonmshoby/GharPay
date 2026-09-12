@@ -6,6 +6,7 @@ import {
   listMyMediatorCases,
   reviewCaseByMediator,
   submitMediatorRecommendation,
+  reviewClaimByMediator,
 } from '../services/mediator.service';
 
 /**
@@ -203,6 +204,69 @@ export const submitRecommendationHandler = async (
     res.json({
       success: true,
       recommendation: result,
+    });
+  } catch (error: any) {
+    if (error.statusCode) {
+      res.status(error.statusCode).json({
+        success: false,
+        error: {
+          code: error.code || 'ERROR',
+          message: error.message,
+        },
+      });
+      return;
+    }
+    next(error);
+  }
+};
+
+/**
+ * POST /api/mediator/claims/:claimId/review
+ * Mediator reviews an individual claim
+ */
+export const reviewClaimHandler = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const mediatorId = req.user?.userId;
+    const claimId = req.params.claimId as string;
+    const { status, approvedAmount, reviewNote } = req.body;
+
+    if (!mediatorId) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+      });
+      return;
+    }
+
+    if (!claimId || !status) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'claimId URL parameter and status are required',
+        },
+      });
+      return;
+    }
+
+    const updatedClaim = await reviewClaimByMediator(
+      claimId,
+      mediatorId,
+      status,
+      approvedAmount,
+      reviewNote
+    );
+
+    res.json({
+      success: true,
+      claim: updatedClaim,
     });
   } catch (error: any) {
     if (error.statusCode) {

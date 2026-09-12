@@ -122,6 +122,10 @@ export const api = {
       request(`/landlord/claims/${claimId}`, {
         method: 'DELETE',
       }),
+    deleteDispute: (disputeId) =>
+      request(`/landlord/disputes/${disputeId}`, {
+        method: 'DELETE',
+      }),
     getClaims: (disputeId) => request(`/landlord/disputes/${disputeId}/claims`),
     uploadEvidenceFile: (data) =>
       request('/landlord/evidence/upload', {
@@ -142,6 +146,28 @@ export const api = {
       request(`/landlord/disputes/${disputeId}/offers`, {
         method: 'POST',
         body: JSON.stringify(data),
+      }),
+  },
+
+  // Dispute Actions (Outside Agreement, Court Case Application & Mediator Review Request)
+  disputeActions: {
+    proposeOutsideAgreement: (disputeId) =>
+      request(`/disputes/${disputeId}/outside-agreement/propose`, {
+        method: 'POST',
+      }),
+    respondOutsideAgreement: (disputeId, accept) =>
+      request(`/disputes/${disputeId}/outside-agreement/respond`, {
+        method: 'POST',
+        body: JSON.stringify({ accept }),
+      }),
+    submitCourtApplication: (disputeId, data = {}) =>
+      request(`/disputes/${disputeId}/court-application`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    requestMediatorReview: (disputeId) =>
+      request(`/disputes/${disputeId}/request-mediator-review`, {
+        method: 'POST',
       }),
   },
 
@@ -184,6 +210,11 @@ export const api = {
       request(`/mediator/cases/${disputeId}/review`, {
         method: 'POST',
       }),
+    reviewClaim: (claimId, data) =>
+      request(`/mediator/claims/${claimId}/review`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     submitRecommendation: (disputeId, data) =>
       request(`/mediator/cases/${disputeId}/recommendation`, {
         method: 'POST',
@@ -213,6 +244,10 @@ export const api = {
       request(`/settlements/${disputeId}/consent/landlord`, {
         method: 'POST',
         body: JSON.stringify({ consent }),
+      }),
+    markAsPaid: (disputeId) =>
+      request(`/settlements/${disputeId}/mark-paid`, {
+        method: 'POST',
       }),
     downloadPdf: (disputeId) =>
       request(`/settlements/${disputeId}/pdf`, {

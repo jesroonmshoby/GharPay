@@ -15,7 +15,8 @@ import {
 import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { calculateDispute } from '../services/calculation.service';
-import { getLandlordDisputes } from '../services/negotiation.service';
+import { getLandlordDisputes, getPendingOutsideAgreement } from '../services/negotiation.service';
+import { getDefaultMediator } from '../services/mediator.service';
 
 /**
  * Helper to format Prisma Decimal objects to clean string representations for JSON responses
@@ -377,6 +378,7 @@ export const createDispute = async (
     }
 
     const caseNumber = await generateCaseNumber();
+    const defaultMediator = await getDefaultMediator();
 
     const result = await prisma.$transaction(async (tx) => {
       const newDispute = await tx.dispute.create({
@@ -384,6 +386,7 @@ export const createDispute = async (
           caseNumber,
           tenancyId: tenancy.id,
           initiatedBy: landlordId,
+          mediatorId: defaultMediator.id,
           totalDeposit: tenancy.securityDeposit,
           claimedDeduction: claimedDeductionDecimal,
           calculatedDeduction: null,
@@ -834,6 +837,8 @@ export const getDisputeDetails = async (
       return;
     }
 
+    const outsideAgreement = await getPendingOutsideAgreement(disputeId);
+
     res.json({
       success: true,
       dispute: {
@@ -845,6 +850,7 @@ export const getDisputeDetails = async (
         calculatedDeduction: formatDecimal(dispute.calculatedDeduction),
         currentRound: dispute.currentRound,
         settlementEligible: dispute.settlementEligible,
+        outsideAgreement,
         claims: dispute.claims.map((claim) => ({
           id: claim.id,
           category: claim.category,
@@ -1117,5 +1123,104 @@ export const deleteClaim = async (
     next(error);
   }
 };
+
+/**
+ * DELETE /api/landlord/disputes/:disputeId
+ * Deletes an uninitialized (DRAFT) dispute case
+ */
+export const deleteDisputeHandler = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const landlordId = req.user?.userId;
+    const disputeId = req.params.disputeId as string;
+
+    if (!landlordId) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+      });
+      return;
+    }
+
+    if (!disputeId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'disputeId URL parameter is required',
+        },
+      });
+      return;
+    }
+
+    const dispute = await prisma.dispute.findUnique({
+      where: { id: disputeId },
+      include: {
+        tenancy: true,
+        claims: true,
+      },
+    });
+
+    if (!dispute) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'DISPUTE_NOT_FOUND',
+          message: 'Dispute case not found',
+        },
+      });
+      return;
+    }
+
+    if (dispute.tenancy.landlordId !== landlordId) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to delete this dispute case',
+        },
+      });
+      return;
+    }
+
+    // Uninitialized check: only DRAFT disputes can be unilaterally deleted
+    if (dispute.status !== DisputeStatus.DRAFT) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'CANNOT_DELETE_INITIALIZED_DISPUTE',
+          message: 'Initialized dispute cases cannot be deleted unilaterally. Mutual consent is required to withdraw an active case.',
+        },
+      });
+      return;
+    }
+
+    const claimIds = dispute.claims.map((c) => c.id);
+
+    // Atomically delete evidence, claims, offers, auditLogs, settlement, and dispute
+    await prisma.$transaction([
+      prisma.evidence.deleteMany({ where: { claimId: { in: claimIds } } }),
+      prisma.claim.deleteMany({ where: { disputeId } }),
+      prisma.offer.deleteMany({ where: { disputeId } }),
+      prisma.auditLog.deleteMany({ where: { disputeId } }),
+      prisma.settlement.deleteMany({ where: { disputeId } }),
+      prisma.dispute.delete({ where: { id: disputeId } }),
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Uninitialized dispute case deleted successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 
