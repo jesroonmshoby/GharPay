@@ -51,8 +51,6 @@ export const SettlementView = () => {
         dRes = await api.landlord.getDispute(id).catch(() => null);
       } else if (currentUser.role === 'TENANT') {
         dRes = await api.tenant.getDispute(id).catch(() => null);
-      } else if (currentUser.role === 'MEDIATOR') {
-        dRes = await api.mediator.getCase(id).catch(() => null);
       }
 
       if (dRes && (dRes.dispute || dRes.caseDetails)) {

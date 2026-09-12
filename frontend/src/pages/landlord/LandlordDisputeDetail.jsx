@@ -285,16 +285,6 @@ export const LandlordDisputeDetail = () => {
     }
   };
 
-  const handleRequestMediatorReview = async () => {
-    try {
-      const res = await api.disputeActions.requestMediatorReview(id);
-      showSuccess(res.message || 'Mediator review requested successfully.');
-      await fetchDisputeDetails();
-    } catch (err) {
-      showError(err.message || 'Unable to request mediator review. Please try again.');
-    }
-  };
-
   const getEvidenceTypeLabel = (typeKey) => {
     const found = EVIDENCE_TYPES.find((t) => t.value === typeKey);
     return found ? found.label : typeKey;
@@ -341,13 +331,6 @@ export const LandlordDisputeDetail = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handleRequestMediatorReview}
-            className="inline-flex items-center space-x-2 bg-[#505423] hover:bg-[#3f421b] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all"
-          >
-            <Scale className="w-4 h-4" />
-            <span>Request Mediator Review</span>
-          </button>
 
           {dispute.status === 'DRAFT' ? (
             <button
@@ -367,7 +350,7 @@ export const LandlordDisputeDetail = () => {
             </button>
           ) : null}
 
-          {(dispute.currentRound >= 3 || dispute.status === 'MEDIATOR_REVIEW' || dispute.status === 'REJECTED') && (
+          {(dispute.currentRound >= 3 || dispute.status === 'REJECTED') && (
             <button
               onClick={() => setShowCourtModal(true)}
               className="inline-flex items-center space-x-2 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all"
@@ -389,7 +372,7 @@ export const LandlordDisputeDetail = () => {
       </div>
 
       {/* Post-3 Negotiation Round / Deadlock Banner */}
-      {(dispute.currentRound >= 3 || dispute.status === 'MEDIATOR_REVIEW') && (
+      {(dispute.currentRound >= 3 || dispute.status === 'REJECTED') && (
         <div className="bg-gradient-to-r from-amber-900 via-amber-850 to-zinc-900 text-white p-6 rounded-2xl shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-amber-700/50">
           <div className="flex items-start gap-4">
             <div className="p-3 bg-amber-500/20 rounded-xl border border-amber-400/30 text-amber-300 shrink-0">
@@ -618,11 +601,11 @@ export const LandlordDisputeDetail = () => {
                       <span className="text-xs text-[#737373] block">Claimed: {formatINR(c.claimedAmount)}</span>
                       {c.status === 'PENDING' ? (
                         <span className="text-xs font-bold text-[#505423] bg-[#505423]/10 px-2 py-0.5 rounded block mt-0.5">
-                          Awaiting Mediator Review
+                          Pending Calculation
                         </span>
                       ) : (
                         <span className="text-sm font-bold text-[#1B8E13] block">
-                          Mediator {c.status}: {formatINR(c.approvedAmount || 0)}
+                          Engine Approved: {formatINR(c.approvedAmount || 0)}
                         </span>
                       )}
                     </div>
